@@ -145,21 +145,22 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8):
-    try:
-        cameras_extrinsic_file = os.path.join(path, "sparse", "images.bin")
-        cameras_intrinsic_file = os.path.join(path, "sparse", "cameras.bin")
-        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
-    except:
-        cameras_extrinsic_file = os.path.join(path, "sparse", "images.txt")
-        cameras_intrinsic_file = os.path.join(path, "sparse", "cameras.txt")
-        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
-        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+def readColmapSceneInfo(path, images, eval, llffhold=8, sample_interval=1):
+    # try:
+    #     cameras_extrinsic_file = os.path.join(path, "sparse", "0", "images.bin")
+    #     cameras_intrinsic_file = os.path.join(path, "sparse", "0", "cameras.bin")
+    #     cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+    #     cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    # except:
+    cameras_extrinsic_file = os.path.join(path, "sparse", "0", "images.txt")
+    cameras_intrinsic_file = os.path.join(path, "sparse", "0", "cameras.txt")
+    cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
+    cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
     reading_dir = "images" if images == None else images
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     # cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : int(x.image_name.split('_')[-1]))
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+    cam_infos = cam_infos[::sample_interval]
     
     js_file = f"{path}/split.json"
     train_list = None
@@ -175,18 +176,21 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in train_list]
         test_cam_infos = [c for idx, c in enumerate(cam_infos) if c.image_name in test_list]
         print(f"train_cam_infos {len(train_cam_infos)}, test_cam_infos {len(test_cam_infos)}")
-    elif eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
-    else:
-        train_cam_infos = cam_infos
-        test_cam_infos = []
+    # elif eval:
+    train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+    test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+    # else:
+        # train_cam_infos = cam_infos
+        # test_cam_infos = []
+    print(f"length of train_cam_infos: {len(train_cam_infos)}")
+    print(f"length of test_cam_infos: {len(test_cam_infos)}")
+    print(llffhold)
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
-    ply_path = os.path.join(path, "sparse/points3D.ply")
-    bin_path = os.path.join(path, "sparse/points3D.bin")
-    txt_path = os.path.join(path, "sparse/points3D.txt")
+    ply_path = os.path.join(path, "sparse/0/points3D.ply")
+    bin_path = os.path.join(path, "sparse/0/points3D.bin")
+    txt_path = os.path.join(path, "sparse/0/points3D.txt")
     if not os.path.exists(ply_path) or True:
         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
         try:
@@ -285,7 +289,12 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):
                            ply_path=ply_path)
     return scene_info
 
+def readNerfStudioInfo(path, white_background, eval):
+    print("Reading Transforms")
+    cam_infos = readCamerasFromTransforms(path, "transforms.json", white_background, "")
+
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
-    "Blender" : readNerfSyntheticInfo
+    "Blender" : readNerfSyntheticInfo,
+    "NerfStudio": readNerfStudioInfo
 }
