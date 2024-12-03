@@ -181,7 +181,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             min_scale_loss = sorted_scale[...,0]
             loss += opt.scale_loss_weight * min_scale_loss.mean()
         # single-view loss
-        if iteration > opt.single_view_weight_from_iter:
+        if False and iteration > opt.single_view_weight_from_iter:
             weight = opt.single_view_weight
             normal = render_pkg["rendered_normal"]
             depth_normal = render_pkg["depth_normal"]
@@ -196,7 +196,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             loss += (normal_loss)
 
         # multi-view loss
-        if iteration > opt.multi_view_weight_from_iter:
+        if False and iteration > opt.multi_view_weight_from_iter:
             nearest_cam = None if len(viewpoint_cam.nearest_id) == 0 else scene.getTrainCameras()[random.sample(viewpoint_cam.nearest_id,1)[0]]
             use_virtul_cam = False
             if opt.use_virtul_cam and (np.random.random() < opt.virtul_cam_prob or nearest_cam is None):
