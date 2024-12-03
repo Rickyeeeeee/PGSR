@@ -1,1 +1,4 @@
 submodules/simple-knn/build
+run.sh
+# Remove all python cache files
+*.pyc
