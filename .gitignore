@@ -1,1 +1,4 @@
 submodules/simple-knn/build
+
+# ignore modules cache
+*.pyc
