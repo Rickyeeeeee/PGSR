@@ -193,7 +193,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 normal_loss = weight * (image_weight * (((depth_normal - normal)).abs().sum(0))).mean()
             else:
                 normal_loss = weight * (((depth_normal - normal)).abs().sum(0)).mean()
-            loss += (normal_loss)
+            # loss += (normal_loss)
 
         # multi-view loss
         if iteration > opt.multi_view_weight_from_iter:
@@ -268,7 +268,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 if d_mask.sum() > 0:
                     geo_loss = geo_weight * ((weights * pixel_noise)[d_mask]).mean()
-                    loss += geo_loss
+                    # loss += geo_loss
                     if use_virtul_cam is False:
                         with torch.no_grad():
                             ## sample mask
@@ -327,7 +327,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                         if mask.sum() > 0:
                             ncc_loss = ncc_weight * ncc.mean()
-                            loss += ncc_loss
+                            # loss += ncc_loss
 
         loss.backward()
         iter_end.record()
