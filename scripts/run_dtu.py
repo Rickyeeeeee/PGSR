@@ -4,7 +4,7 @@ scenes = [24, 37, 40, 55, 63, 65, 69, 83, 97, 105, 106, 110, 114, 118, 122]
 data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/dtu_dataset/dtu'
 out_base_path='/workspace/work/Outputs/dtu'
 eval_path='dtu_eval'
-out_name='pgsr_no_geo'
+out_name='pgsr_svgeo'
 gpu_id=3
 
 for scene in scenes:
