@@ -268,7 +268,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 if d_mask.sum() > 0:
                     geo_loss = geo_weight * ((weights * pixel_noise)[d_mask]).mean()
-                    # loss += geo_loss
+                    loss += geo_loss
                     if use_virtul_cam is False:
                         with torch.no_grad():
                             ## sample mask
