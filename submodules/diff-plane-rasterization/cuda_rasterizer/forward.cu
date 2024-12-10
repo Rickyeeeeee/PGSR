@@ -319,6 +319,7 @@ renderCUDA(
 
 	// Initialize helper variables
 	float T = 1.0f;
+	float geo_T = 1.0f;
 	uint32_t contributor = 0;
 	uint32_t last_contributor = 0;
 	float C[CHANNELS] = { 0 };
@@ -370,12 +371,15 @@ renderCUDA(
 				continue;
 			}
 
+			float geo_alpha = min(0.99f, 0.5f * exp(power));
+			float test_geo_T = geo_T * (1 - geo_alpha);
+
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
 			if (render_geo) {
 				for (int ch = 0; ch < ALL_MAP; ch++)
-					All_map[ch] += all_map[collected_id[j] * ALL_MAP + ch] * alpha * T;
+					All_map[ch] += all_map[collected_id[j] * ALL_MAP + ch] * geo_alpha * geo_T;
 			}
 			
 			if (T > 0.5)
@@ -383,6 +387,7 @@ renderCUDA(
 				atomicAdd(&(out_observe[collected_id[j]]), 1);
 			}
 			T = test_T;
+			geo_T = test_geo_T;
 
 			// Keep track of last range entry to update this
 			// pixel.
