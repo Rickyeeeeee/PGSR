@@ -410,6 +410,7 @@ renderCUDA(
 	const float* __restrict__ all_maps,
 	const float* __restrict__ all_map_pixels,
 	const float* __restrict__ final_Ts,
+	const float* __restrict__ final_geo_Ts,
 	const uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_dout_all_maps,
@@ -451,6 +452,9 @@ renderCUDA(
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
 
+	const float T_geo_final = inside ? final_geo_Ts[pix_id] : 0;
+	float T_geo = T_geo_final;
+
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
 	uint32_t contributor = toDo;
@@ -486,6 +490,7 @@ renderCUDA(
 	// }
 
 	float last_alpha = 0;
+	float last_geo_alpha = 0;
 	float last_color[C] = { 0 };
 	float last_all_map[MAP_N] = { 0 };
 
@@ -537,6 +542,9 @@ renderCUDA(
 			const float alpha = min(0.99f, con_o.w * G);
 			if (alpha < 1.0f / 255.0f)
 				continue;
+			const float geo_alph = min(0.99f, 0.5f * G);
+			
+			T_geo = T_geo * (1.f - geo_alph);
 
 			T = T / (1.f - alpha);
 			const float dchannel_dcolor = alpha * T;
@@ -565,11 +573,11 @@ renderCUDA(
 				{
 					const float c = collected_all_maps[ch * BLOCK_SIZE + j];
 					// Update last color (to be used in the next iteration)
-					accum_all_map[ch] = last_alpha * last_all_map[ch] + (1.f - last_alpha) * accum_all_map[ch];
+					accum_all_map[ch] = last_geo_alpha * last_all_map[ch] + (1.f - last_geo_alpha) * accum_all_map[ch];
 					last_all_map[ch] = c;
 
 					const float dL_dchannel = dL_dout_all_map[ch];
-					dL_dalpha += (c - accum_all_map[ch]) * dL_dchannel;
+					// dL_dalpha += (c - accum_all_map[ch]) * dL_dchannel;
 					// Update the gradients w.r.t. color of the Gaussian. 
 					// Atomic, since this pixel is just one of potentially
 					// many that were affected by this Gaussian.
@@ -580,6 +588,7 @@ renderCUDA(
 			dL_dalpha *= T;
 			// Update last alpha (to be used in the next iteration)
 			last_alpha = alpha;
+			last_geo_alpha = geo_alph;
 
 			// Account for fact that alpha also influences how much of
 			// the background color is added if nothing left to blend
@@ -691,6 +700,7 @@ void BACKWARD::render(
 	const float* all_maps,
 	const float* all_map_pixels,
 	const float* final_Ts,
+	const float* final_geo_Ts,
 	const uint32_t* n_contrib,
 	const float* dL_dpixels,
 	const float* dL_dout_all_map,
@@ -715,6 +725,7 @@ void BACKWARD::render(
 		all_maps,
 		all_map_pixels,
 		final_Ts,
+		final_geo_Ts,
 		n_contrib,
 		dL_dpixels,
 		dL_dout_all_map,

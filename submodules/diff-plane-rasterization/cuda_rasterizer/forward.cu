@@ -285,6 +285,7 @@ renderCUDA(
 	const float* __restrict__ all_map,
 	const float4* __restrict__ conic_opacity,
 	float* __restrict__ final_T,
+	float* __restrict__ final_geo_T,
 	uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
@@ -400,6 +401,7 @@ renderCUDA(
 	if (inside)
 	{
 		final_T[pix_id] = T;
+		final_geo_T[pix_id] = geo_T;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
@@ -425,6 +427,7 @@ void FORWARD::render(
 	const float* all_map,
 	const float4* conic_opacity,
 	float* final_T,
+	float* final_geo_T,
 	uint32_t* n_contrib,
 	const float* bg_color,
 	float* out_color,
@@ -446,6 +449,7 @@ void FORWARD::render(
 		all_map,
 		conic_opacity,
 		final_T,
+		final_geo_T,
 		n_contrib,
 		bg_color,
 		out_color,

@@ -33,6 +33,7 @@ namespace BACKWARD
 		const float* all_maps,
 		const float* all_map_pixels,
 		const float* final_Ts,
+		const float* final_geo_Ts,
 		const uint32_t* n_contrib,
 		const float* dL_dpixels,
 		const float* dL_dout_all_map,
