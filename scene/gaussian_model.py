@@ -65,6 +65,10 @@ class GaussianModel:
         self.max_weight = torch.empty(0)
         self.xyz_gradient_accum = torch.empty(0)
         self.xyz_gradient_accum_abs = torch.empty(0)
+        self.xyz_image_gradient_accum = torch.empty(0)
+        self.xyz_image_gradient_accum_abs = torch.empty(0)
+        self.xyz_geo_gradient_accum = torch.empty(0)
+        self.xyz_geo_gradient_accum_abs = torch.empty(0)
         self.denom = torch.empty(0)
         self.denom_abs = torch.empty(0)
         self.optimizer = None
@@ -89,6 +93,10 @@ class GaussianModel:
             self.max_weight,
             self.xyz_gradient_accum,
             self.xyz_gradient_accum_abs,
+            self.xyz_image_gradient_accum,
+            self.xyz_image_gradient_accum_abs,
+            self.xyz_geo_gradient_accum,
+            self.xyz_geo_gradient_accum_abs,
             self.denom,
             self.denom_abs,
             self.optimizer.state_dict(),
@@ -108,6 +116,10 @@ class GaussianModel:
         self.max_weight,
         xyz_gradient_accum, 
         xyz_gradient_accum_abs,
+        xyz_image_gradient_accum, 
+        xyz_image_gradient_accum_abs,
+        xyz_geo_gradient_accum, 
+        xyz_geo_gradient_accum_abs,
         denom,
         denom_abs,
         opt_dict, 
@@ -116,6 +128,10 @@ class GaussianModel:
         self.training_setup(training_args)
         self.xyz_gradient_accum = xyz_gradient_accum
         self.xyz_gradient_accum_abs = xyz_gradient_accum_abs
+        self.xyz_image_gradient_accum = xyz_image_gradient_accum
+        self.xyz_image_gradient_accum_abs = xyz_image_gradient_accum_abs
+        self.xyz_geo_gradient_accum = xyz_geo_gradient_accum
+        self.xyz_geo_gradient_accum_abs = xyz_geo_gradient_accum_abs
         self.denom = denom
         self.denom_abs = denom_abs
         self.optimizer.load_state_dict(opt_dict)
@@ -200,6 +216,10 @@ class GaussianModel:
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.xyz_gradient_accum_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_image_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_image_gradient_accum_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_geo_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_geo_gradient_accum_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.abs_split_radii2D_threshold = training_args.abs_split_radii2D_threshold
@@ -360,6 +380,10 @@ class GaussianModel:
 
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
         self.xyz_gradient_accum_abs = self.xyz_gradient_accum_abs[valid_points_mask]
+        self.xyz_image_gradient_accum = self.xyz_image_gradient_accum[valid_points_mask]
+        self.xyz_image_gradient_accum_abs = self.xyz_image_gradient_accum_abs[valid_points_mask]
+        self.xyz_geo_gradient_accum = self.xyz_geo_gradient_accum[valid_points_mask]
+        self.xyz_geo_gradient_accum_abs = self.xyz_geo_gradient_accum_abs[valid_points_mask]
 
         self.denom = self.denom[valid_points_mask]
         self.denom_abs = self.denom_abs[valid_points_mask]
@@ -407,6 +431,10 @@ class GaussianModel:
 
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.xyz_gradient_accum_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_image_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_image_gradient_accum_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_geo_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.xyz_geo_gradient_accum_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom_abs = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
@@ -514,6 +542,14 @@ class GaussianModel:
         self.prune_points(prune_mask)
         # print(f"all points {self._xyz.shape[0]}")
         torch.cuda.empty_cache()
+
+    def add_image_densification_stats(self, viewspace_point_tensor, viewspace_point_tensor_abs, update_filter):
+        self.xyz_image_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+        self.xyz_image_gradient_accum_abs[update_filter] += torch.norm(viewspace_point_tensor_abs.grad[update_filter,:2], dim=-1, keepdim=True)
+
+    def add_geo_densification_stats(self, viewspace_point_tensor_grad, viewspace_point_tensor_abs_grad, update_filter):
+        self.xyz_geo_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor_grad, dim=-1, keepdim=True)
+        self.xyz_geo_gradient_accum_abs[update_filter] += torch.norm(viewspace_point_tensor_abs_grad, dim=-1, keepdim=True)
 
     def add_densification_stats(self, viewspace_point_tensor, viewspace_point_tensor_abs, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)

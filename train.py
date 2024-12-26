@@ -19,7 +19,7 @@ from utils.loss_utils import l1_loss, ssim, lncc, get_img_grad_weight
 from utils.graphics_utils import patch_offsets, patch_warp
 from gaussian_renderer import render, network_gui
 import sys, time
-from scene import Scene, GaussianModel
+from scene import Scene, GaussianModel  
 from utils.general_utils import safe_state
 import cv2
 import uuid
@@ -36,6 +36,7 @@ except ImportError:
     TENSORBOARD_FOUND = False
 import time
 import torch.nn.functional as F
+from splatviz_network import SplatvizNetwork
 
 def setup_seed(seed):
      torch.manual_seed(seed)
@@ -117,13 +118,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_single_view_for_log = 0.0
     ema_multi_view_geo_for_log = 0.0
     ema_multi_view_pho_for_log = 0.0
-    normal_loss, geo_loss, ncc_loss = None, None, None
+    normal_loss, mvgeo_loss, ncc_loss = None, None, None
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     debug_path = os.path.join(scene.model_path, "debug")
     os.makedirs(debug_path, exist_ok=True)
 
+    # network = SplatvizNetwork()
     for iteration in range(first_iter, opt.iterations + 1):
+    #     network.render(pipe, gaussians, ema_loss_for_log, render, background, iteration, opt)
         # if network_gui.conn == None:
         #     network_gui.try_connect()
         # while network_gui.conn != None:
@@ -131,7 +134,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         #         net_image_bytes = None
         #         custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
         #         if custom_cam != None:
-        #             net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
+        #             net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer, return_plane=False, return_depth_normal=False)["render"]
         #             net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
         #         network_gui.send(net_image_bytes, dataset.source_path)
         #         if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
@@ -172,14 +175,29 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         else:
             Ll1 = l1_loss(image, gt_image)
         image_loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * ssim_loss
-        loss = image_loss.clone()
+
+        image_loss.backward()
+
+        # store accumulated image loss
+        with torch.no_grad():
+            if iteration < opt.densify_until_iter:
+                mask = (render_pkg["out_observe"] > 0) & visibility_filter
+                gaussians.max_radii2D[mask] = torch.max(gaussians.max_radii2D[mask], radii[mask])
+                viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
+                gaussians.add_image_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
+                viewspace_point_tensor_image_grad = viewspace_point_tensor.grad[visibility_filter,:2]
+                viewspace_point_tensor_abs_image_grad = viewspace_point_tensor_abs.grad[visibility_filter,:2]
+
         
+        # Initialize geo loss to 0
+        geo_loss = torch.tensor(0.0, device="cuda")        
+
         # scale loss
         if visibility_filter.sum() > 0:
             scale = gaussians.get_scaling[visibility_filter]
             sorted_scale, _ = torch.sort(scale, dim=-1)
             min_scale_loss = sorted_scale[...,0]
-            loss += opt.scale_loss_weight * min_scale_loss.mean()
+            geo_loss += opt.scale_loss_weight * min_scale_loss.mean()
         # single-view loss
         if iteration > opt.single_view_weight_from_iter:
             weight = opt.single_view_weight
@@ -193,7 +211,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 normal_loss = weight * (image_weight * (((depth_normal - normal)).abs().sum(0))).mean()
             else:
                 normal_loss = weight * (((depth_normal - normal)).abs().sum(0)).mean()
-            loss += (normal_loss)
+            geo_loss += (normal_loss)
 
         # multi-view loss
         if iteration > opt.multi_view_weight_from_iter:
@@ -267,8 +285,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     cv2.imwrite(os.path.join(debug_path, "%05d"%iteration + "_" + viewpoint_cam.image_name + ".jpg"), image_to_show)
 
                 if d_mask.sum() > 0:
-                    geo_loss = geo_weight * ((weights * pixel_noise)[d_mask]).mean()
-                    loss += geo_loss
+                    mvgeo_loss = geo_weight * ((weights * pixel_noise)[d_mask]).mean()
+                    geo_loss += mvgeo_loss
                     if use_virtul_cam is False:
                         with torch.no_grad():
                             ## sample mask
@@ -327,16 +345,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                         if mask.sum() > 0:
                             ncc_loss = ncc_weight * ncc.mean()
-                            loss += ncc_loss
+                            geo_loss += ncc_loss
 
-        loss.backward()
+        geo_loss.backward()
+        loss = image_loss + geo_loss
         iter_end.record()
 
         with torch.no_grad():
             # Progress bar
             ema_loss_for_log = 0.4 * image_loss.item() + 0.6 * ema_loss_for_log
             ema_single_view_for_log = 0.4 * normal_loss.item() if normal_loss is not None else 0.0 + 0.6 * ema_single_view_for_log
-            ema_multi_view_geo_for_log = 0.4 * geo_loss.item() if geo_loss is not None else 0.0 + 0.6 * ema_multi_view_geo_for_log
+            ema_multi_view_geo_for_log = 0.4 * mvgeo_loss.item() if mvgeo_loss is not None else 0.0 + 0.6 * ema_multi_view_geo_for_log
             ema_multi_view_pho_for_log = 0.4 * ncc_loss.item() if ncc_loss is not None else 0.0 + 0.6 * ema_multi_view_pho_for_log
             if iteration % 10 == 0:
                 loss_dict = {
@@ -363,7 +382,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 mask = (render_pkg["out_observe"] > 0) & visibility_filter
                 gaussians.max_radii2D[mask] = torch.max(gaussians.max_radii2D[mask], radii[mask])
                 viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
-                gaussians.add_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
+                gaussians.add_geo_densification_stats(viewspace_point_tensor.grad-viewspace_point_tensor_image_grad, viewspace_point_tensor_abs.grad-viewspace_point_tensor_abs_image_grad, visibility_filter)
+                gaussians.add_density_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
@@ -475,7 +495,7 @@ if __name__ == "__main__":
     op = OptimizationParams(parser)
     pp = PipelineParams(parser)
     parser.add_argument('--ip', type=str, default="127.0.0.1")
-    parser.add_argument('--port', type=int, default=6007)
+    parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-100)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
@@ -492,7 +512,7 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     # Start GUI server, configure and run training
-    # network_gui.init(args.ip, args.port)
+    # network_gui.init(args.ip, argZs.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
