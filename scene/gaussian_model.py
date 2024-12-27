@@ -136,6 +136,16 @@ class GaussianModel:
         self.denom_abs = denom_abs
         self.optimizer.load_state_dict(opt_dict)
 
+    def named_parameters(self):
+        return [
+            ("xyz", self._xyz),
+            ("features_dc", self._features_dc),
+            ("features_rest", self._features_rest),
+            ("scaling", self._scaling),
+            ("rotation", self._rotation),
+            ("opacity", self._opacity)
+        ]
+
     @property
     def get_scaling(self):
         return self.scaling_activation(self._scaling)
@@ -547,9 +557,9 @@ class GaussianModel:
         self.xyz_image_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.xyz_image_gradient_accum_abs[update_filter] += torch.norm(viewspace_point_tensor_abs.grad[update_filter,:2], dim=-1, keepdim=True)
 
-    def add_geo_densification_stats(self, viewspace_point_tensor_grad, viewspace_point_tensor_abs_grad, update_filter):
-        self.xyz_geo_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor_grad, dim=-1, keepdim=True)
-        self.xyz_geo_gradient_accum_abs[update_filter] += torch.norm(viewspace_point_tensor_abs_grad, dim=-1, keepdim=True)
+    def add_geo_densification_stats(self, viewspace_point_tensor, viewspace_point_tensor_abs, update_filter):
+        self.xyz_geo_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+        self.xyz_geo_gradient_accum_abs[update_filter] += torch.norm(viewspace_point_tensor_abs.grad[update_filter,:2], dim=-1, keepdim=True)
 
     def add_densification_stats(self, viewspace_point_tensor, viewspace_point_tensor_abs, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)

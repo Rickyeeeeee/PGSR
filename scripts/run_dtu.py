@@ -16,11 +16,12 @@ for scene in scenes:
     print(cmd)
     os.system(cmd)
 
-    common_args = "--quiet -r2 --ncc_scale 0.5 --checkpoint_iterations 7_099 11_099 14_999"
+    common_args = "--iterations 8000 -r2 --ncc_scale 0.5 --checkpoint_iterations 7_099 11_099 14_999"
     cmd = f'CUDA_VISIBLE_DEVICES={gpu_id} python train.py -s {data_base_path}/scan{scene} -m {out_base_path}/{out_name}/dtu_scan{scene} {common_args}'
     print(cmd)
     os.system(cmd)
 
+#     break
     continue
 
     common_args = "--quiet --num_cluster 1 --voxel_size 0.002 --max_depth 5.0"

@@ -1,0 +1,1 @@
+bash /workspace/work/Projects/pgsr-experiments/scripts/train_evaluate_dslr.sh

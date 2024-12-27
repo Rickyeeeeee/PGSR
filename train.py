@@ -176,17 +176,23 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             Ll1 = l1_loss(image, gt_image)
         image_loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * ssim_loss
 
-        image_loss.backward()
+        image_loss.backward(retain_graph=True)
 
-        # store accumulated image loss
+
         with torch.no_grad():
+            # print the name of the parameters that has .grad is None
+            for name, param in gaussians.named_parameters():
+                if param.grad is None:
+                    print(name)
+            grad_from_image_loss = {name: param.grad.clone() for name, param in gaussians.named_parameters() if param.grad is not None}
+            grad_from_image_loss_app = {name: param.grad.clone() for name, param in app_model.named_parameters() if param.grad is not None}
+
+            # store accumulated image loss
             if iteration < opt.densify_until_iter:
                 mask = (render_pkg["out_observe"] > 0) & visibility_filter
                 gaussians.max_radii2D[mask] = torch.max(gaussians.max_radii2D[mask], radii[mask])
                 viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
-                gaussians.add_image_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
-                viewspace_point_tensor_image_grad = viewspace_point_tensor.grad[visibility_filter,:2]
-                viewspace_point_tensor_abs_image_grad = viewspace_point_tensor_abs.grad[visibility_filter,:2]
+                gaussians.add_image_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)      
 
         
         # Initialize geo loss to 0
@@ -200,6 +206,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             geo_loss += opt.scale_loss_weight * min_scale_loss.mean()
         # single-view loss
         if iteration > opt.single_view_weight_from_iter:
+            with torch.no_grad():
+                gaussians.optimizer.zero_grad(set_to_none = True)
+                app_model.optimizer.zero_grad(set_to_none = True)
+                # set viewspace_point_tensor's and viewspace_point_tensor_abs's grad to None
+                viewspace_point_tensor.grad = None
+                viewspace_point_tensor_abs.grad = None
+
             weight = opt.single_view_weight
             normal = render_pkg["rendered_normal"]
             depth_normal = render_pkg["depth_normal"]
@@ -347,8 +360,35 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             ncc_loss = ncc_weight * ncc.mean()
                             geo_loss += ncc_loss
 
-        geo_loss.backward()
-        loss = image_loss + geo_loss
+            geo_loss.backward(retain_graph=True)
+
+            with torch.no_grad():
+                # extract gradients
+                grad_from_geo_loss = {name: param.grad.clone() for name, param in gaussians.named_parameters() if param.grad is not None}
+                grad_from_geo_loss_app = {name: param.grad.clone() for name, param in app_model.named_parameters() if param.grad is not None}
+
+                # store accumulated geo loss
+                if iteration < opt.densify_until_iter:
+                    mask = (render_pkg["out_observe"] > 0) & visibility_filter
+                    gaussians.max_radii2D[mask] = torch.max(gaussians.max_radii2D[mask], radii[mask])
+                    viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
+                    gaussians.add_geo_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
+                    # print("Add geo densification stats")
+
+                gaussians.optimizer.zero_grad(set_to_none = True)
+                app_model.optimizer.zero_grad(set_to_none = True)
+
+                for name, param in gaussians.named_parameters():
+                    if param.grad is not None:
+                        param.grad = grad_from_image_loss[name] + grad_from_geo_loss[name]
+                for name, param in app_model.named_parameters():
+                    if param.grad is not None:
+                        param.grad = grad_from_image_loss_app[name] + grad_from_geo_loss_app[name]
+
+            loss = image_loss + geo_loss
+        else:
+            loss = image_loss
+
         iter_end.record()
 
         with torch.no_grad():
@@ -382,8 +422,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 mask = (render_pkg["out_observe"] > 0) & visibility_filter
                 gaussians.max_radii2D[mask] = torch.max(gaussians.max_radii2D[mask], radii[mask])
                 viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
-                gaussians.add_geo_densification_stats(viewspace_point_tensor.grad-viewspace_point_tensor_image_grad, viewspace_point_tensor_abs.grad-viewspace_point_tensor_abs_image_grad, visibility_filter)
-                gaussians.add_density_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
+                gaussians.add_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
@@ -401,6 +440,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 prune_mask = (observe_cnt < observe_the).squeeze()
                 if prune_mask.sum() > 0:
                     gaussians.prune_points(prune_mask)
+
+            # print(gaussians.optimizer.state)
 
             # reset_opacity
             if iteration < opt.densify_until_iter:
