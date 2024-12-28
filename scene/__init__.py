@@ -23,6 +23,7 @@ import torch
 class Scene:
 
     gaussians : GaussianModel
+    dual_gaussians : GaussianModel
 
     def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
         """b
@@ -31,6 +32,7 @@ class Scene:
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
+        self.dual_gaussians = None
         self.source_path = args.source_path
 
         if load_iteration:
@@ -129,7 +131,15 @@ class Scene:
 
     def save(self, iteration, mask=None):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
-        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mask)
+        if self.dual_gaussians is not None:
+            self.dual_gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mask)
+        else:
+            self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mask)
+
+    def getGaussians(self):
+        if self.dual_gaussians is not None:
+            return self.dual_gaussians
+        return self.gaussians
 
     def getTrainCameras(self, scale=1.0):
         return self.train_cameras[scale]
