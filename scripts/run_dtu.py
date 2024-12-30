@@ -5,7 +5,7 @@ data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/dtu_dataset/dtu
 out_base_path='/workspace/work/Outputs/dtu'
 eval_path='/workspace/data/replica_sclike_colmap_dnsplatter/dtu_dataset/MVS_Data'
 out_name='pgsr'
-gpu_id=3
+gpu_id=1
 
 for scene in scenes:
     cmd = f'rm -rf {out_base_path}/dtu_scan{scene}/{out_name}/*'
