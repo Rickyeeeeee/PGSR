@@ -443,8 +443,8 @@ class DualGaussianModel:
             self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_dual_opacities, new_scaling, new_rotation)
 
     def densify_and_prune(self, max_grad, abs_max_grad, min_opacity, extent, max_screen_size):
-        grads = self.xyz_image_gradient_accum / self.denom
-        grads_abs = self.xyz_image_gradient_accum_abs / self.denom_abs
+        grads = torch.max(self.xyz_image_gradient_accum, self.xyz_geo_gradient_accum) / self.denom
+        grads_abs = torch.max(self.xyz_image_gradient_accum_abs, self.xyz_geo_gradient_accum_abs) / self.denom_abs
         grads[grads.isnan()] = 0.0
         grads_abs[grads_abs.isnan()] = 0.0
         max_radii2D = self.max_radii2D.clone()

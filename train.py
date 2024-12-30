@@ -15,7 +15,7 @@ import torch
 import random
 import numpy as np
 from random import randint
-from utils.loss_utils import l1_loss, ssim, lncc, get_img_grad_weight
+from utils.loss_utils import l1_loss, ssim, lncc, get_img_grad_weight, l2_loss
 from utils.graphics_utils import patch_offsets, patch_warp
 from gaussian_renderer import render, network_gui, render_with_dual, render_without_dual
 import sys, time
@@ -116,10 +116,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
+    ema_dual_for_log = 0.0
     ema_single_view_for_log = 0.0
     ema_multi_view_geo_for_log = 0.0
     ema_multi_view_pho_for_log = 0.0
-    normal_loss, mvgeo_loss, ncc_loss = None, None, None
+    dual_opacity_loss, normal_loss, mvgeo_loss, ncc_loss = None, None, None, None
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     debug_path = os.path.join(scene.model_path, "debug")
@@ -233,12 +234,38 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # Initialize geo loss to 0
         geo_loss = torch.tensor(0.0, device="cuda")        
 
-        # single-view loss
         if iteration > opt.single_view_weight_from_iter:
             with torch.no_grad():
                 gaussians.optimizer.zero_grad(set_to_none = True)
                 app_model.optimizer.zero_grad(set_to_none = True)
 
+            # Note: constraint dual_opacity is useless, 
+            # The reason we have good geometric structure is that rgb images
+            # are used to train the model, the geometric constraints are only
+            # ways to make the surface more smooth and more tight.
+
+            # So one solution is to make opacity close to dual_opacity.
+            # But to out-perform pgsr, we need to make them not equal.
+            # So some opacities are reduce to account for transparency.
+            # Ideally we want dual_opacity needs to be not less then opacity.
+            # And to compensate for the transparency, we need to add new appearance
+            # gs. Or we can only constraint dual opacity on a subset of the gs.
+
+            # Another solution is to constraint the guassians directly to the 
+            # surface of the object. Also hard to implement, because we don't 
+            # know where the surface is.
+
+            # dual opacity 0.5 loss, constrain the opacity to be 0.5
+            # dual_opacity = gaussians.get_dual_opacity[dual_visibility_filter]
+            # dual_opacity_loss = l1_loss(dual_opacity, 0.9) * 50.0
+            # geo_loss += dual_opacity_loss
+            
+            dual_opacity = gaussians.get_dual_opacity[dual_visibility_filter]
+            opacity = gaussians.get_opacity[dual_visibility_filter]
+            dual_opacity_loss = l1_loss(dual_opacity, opacity) * 50.0
+            geo_loss += dual_opacity_loss
+
+            # single-view loss
             weight = opt.single_view_weight
             normal = render_dual_pkg["rendered_normal"]
             depth_normal = render_dual_pkg["depth_normal"]
@@ -429,12 +456,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         with torch.no_grad():
             # Progress bar
             ema_loss_for_log = 0.4 * image_loss.item() + 0.6 * ema_loss_for_log
+            ema_dual_for_log = 0.4 * dual_opacity_loss.item() if dual_opacity_loss is not None else 0.0 + 0.6 * ema_dual_for_log
             ema_single_view_for_log = 0.4 * normal_loss.item() if normal_loss is not None else 0.0 + 0.6 * ema_single_view_for_log
             ema_multi_view_geo_for_log = 0.4 * mvgeo_loss.item() if mvgeo_loss is not None else 0.0 + 0.6 * ema_multi_view_geo_for_log
             ema_multi_view_pho_for_log = 0.4 * ncc_loss.item() if ncc_loss is not None else 0.0 + 0.6 * ema_multi_view_pho_for_log
             if iteration % 10 == 0:
                 loss_dict = {
                     "Loss": f"{ema_loss_for_log:.{5}f}",
+                    "Dual": f"{ema_dual_for_log:.{5}f}",
                     "Single": f"{ema_single_view_for_log:.{5}f}",
                     "Geo": f"{ema_multi_view_geo_for_log:.{5}f}",
                     "Pho": f"{ema_multi_view_pho_for_log:.{5}f}",

@@ -4,7 +4,7 @@ scenes = [24, 37, 40, 55, 63, 65, 69, 83, 97, 105, 106, 110, 114, 118, 122]
 data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/dtu_dataset/dtu'
 out_base_path='/workspace/work/Outputs/dtu'
 eval_path='/workspace/data/replica_sclike_colmap_dnsplatter/dtu_dataset/MVS_Data'
-out_name='dual'
+out_name='dual_opacity_consistency'
 gpu_id=3
 
 for scene in scenes:
@@ -16,13 +16,14 @@ for scene in scenes:
     print(cmd)
     os.system(cmd)
 
-    common_args = " -r2 --ncc_scale 0.5 --checkpoint_iterations 7_099 8_099 9_099 10_099 --iterations 10_100"
+    common_args = "--quiet -r2 --ncc_scale 0.5 --checkpoint_iterations 7_099 10_099 14_099 17_099 20_099 24_099 27_099"
     cmd = f'CUDA_VISIBLE_DEVICES={gpu_id} python train.py -s {data_base_path}/scan{scene} -m {out_base_path}/{out_name}/dtu_scan{scene} {common_args}'
     print(cmd)
     os.system(cmd)
 
-    break
-#     continue
+    cmd = 'conda install open3d==0.18.0 -y'
+    print(cmd)
+    os.system(cmd)
 
     common_args = "--quiet --num_cluster 1 --voxel_size 0.002 --max_depth 5.0"
     cmd = f'CUDA_VISIBLE_DEVICES={gpu_id} python render.py -m {out_base_path}/{out_name}/dtu_scan{scene} {common_args}'
@@ -36,3 +37,10 @@ for scene in scenes:
           f"--DTU {eval_path}"
     print(cmd)
     os.system(cmd)
+
+    cmd = f"CUDA_VISIBLE_DEVICES={gpu_id} python metrics.py " + \
+          f"-m {out_base_path}/{out_name}/dtu_scan{scene} "
+    print(cmd)
+    os.system(cmd)
+
+#     break
