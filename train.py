@@ -146,10 +146,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_start.record()
 
-        if iteration == opt.single_view_weight_from_iter+1:
-            scene.dual_gaussians = DualGaussianModel(gaussians)
-            gaussians = scene.dual_gaussians
-            gaussians.training_setup(opt)
+        # if iteration == opt.single_view_weight_from_iter+1:
+        #     scene.dual_gaussians = DualGaussianModel(gaussians)
+        #     gaussians = scene.dual_gaussians
+        #     gaussians.training_setup(opt)
 
         gaussians.update_learning_rate(iteration)
         # Every 1000 its we increase the levels of SH up to a maximum degree
@@ -182,10 +182,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             image, viewspace_point_tensor, visibility_filter, radii = \
                 render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
             
-            render_dual_pkg = render_with_dual(viewpoint_cam, gaussians, pipe, bg, app_model=app_model,
+            render_geo_pkg = render_without_dual(viewpoint_cam, gaussians, pipe, bg, app_model=app_model,
                                 return_plane=True, return_depth_normal=True)
             dual_visibility_filter, dual_radii = \
-                render_dual_pkg["visibility_filter"], render_dual_pkg["radii"]
+                render_geo_pkg["visibility_filter"], render_geo_pkg["radii"]
         
         
         # --------------------------------------------------------------------- #
@@ -260,15 +260,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # dual_opacity_loss = l1_loss(dual_opacity, 0.9) * 50.0
             # geo_loss += dual_opacity_loss
             
-            dual_opacity = gaussians.get_dual_opacity[dual_visibility_filter]
-            opacity = gaussians.get_opacity[dual_visibility_filter]
-            dual_opacity_loss = l1_loss(dual_opacity, opacity) * 50.0
-            geo_loss += dual_opacity_loss
+            # dual_opacity = gaussians.get_dual_opacity[dual_visibility_filter]
+            # opacity = gaussians.get_opacity[dual_visibility_filter]
+            # dual_opacity_loss = l1_loss(dual_opacity, opacity) * 50.0
+            # geo_loss += dual_opacity_loss
 
             # single-view loss
             weight = opt.single_view_weight
-            normal = render_dual_pkg["rendered_normal"]
-            depth_normal = render_dual_pkg["depth_normal"]
+            normal = render_geo_pkg["rendered_normal"]
+            depth_normal = render_geo_pkg["depth_normal"]
 
             image_weight = (1.0 - get_img_grad_weight(gt_image))
             image_weight = (image_weight).clamp(0,1).detach() ** 2
@@ -292,15 +292,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 ncc_weight = opt.multi_view_ncc_weight
                 geo_weight = opt.multi_view_geo_weight
                 ## compute geometry consistency mask and loss
-                H, W = render_dual_pkg['plane_depth'].squeeze().shape
+                H, W = render_geo_pkg['plane_depth'].squeeze().shape
                 ix, iy = torch.meshgrid(
                     torch.arange(W), torch.arange(H), indexing='xy')
-                pixels = torch.stack([ix, iy], dim=-1).float().to(render_dual_pkg['plane_depth'].device)
+                pixels = torch.stack([ix, iy], dim=-1).float().to(render_geo_pkg['plane_depth'].device)
 
-                nearest_render_dual_pkg = render_with_dual(nearest_cam, gaussians, pipe, bg, app_model=app_model,
+                nearest_render_dual_pkg = render_without_dual(nearest_cam, gaussians, pipe, bg, app_model=app_model,
                                             return_plane=True, return_depth_normal=False)
 
-                pts = gaussians.get_points_from_depth(viewpoint_cam, render_dual_pkg['plane_depth'])
+                pts = gaussians.get_points_from_depth(viewpoint_cam, render_geo_pkg['plane_depth'])
                 pts_in_nearest_cam = pts @ nearest_cam.world_view_transform[:3,:3] + nearest_cam.world_view_transform[3,:3]
                 map_z, d_mask = gaussians.get_points_depth_in_depth_map(nearest_cam, nearest_render_dual_pkg['plane_depth'], pts_in_nearest_cam)
                 
@@ -332,11 +332,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     depth_normal_show = (((depth_normal+1.0)*0.5).permute(1,2,0).clamp(0,1)*255).detach().cpu().numpy().astype(np.uint8)
                     d_mask_show = (weights.float()*255).detach().cpu().numpy().astype(np.uint8).reshape(H,W)
                     d_mask_show_color = cv2.applyColorMap(d_mask_show, cv2.COLORMAP_JET)
-                    depth = render_dual_pkg['plane_depth'].squeeze().detach().cpu().numpy()
+                    depth = render_geo_pkg['plane_depth'].squeeze().detach().cpu().numpy()
                     depth_i = (depth - depth.min()) / (depth.max() - depth.min() + 1e-20)
                     depth_i = (depth_i * 255).clip(0, 255).astype(np.uint8)
                     depth_color = cv2.applyColorMap(depth_i, cv2.COLORMAP_JET)
-                    distance = render_dual_pkg['rendered_distance'].squeeze().detach().cpu().numpy()
+                    distance = render_geo_pkg['rendered_distance'].squeeze().detach().cpu().numpy()
                     distance_i = (distance - distance.min()) / (distance.max() - distance.min() + 1e-20)
                     distance_i = (distance_i * 255).clip(0, 255).astype(np.uint8)
                     distance_color = cv2.applyColorMap(distance_i, cv2.COLORMAP_JET)
@@ -377,10 +377,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             ref_to_neareast_t = -ref_to_neareast_r @ viewpoint_cam.world_view_transform[3,:3] + nearest_cam.world_view_transform[3,:3]
 
                         ## compute Homography
-                        ref_local_n = render_dual_pkg["rendered_normal"].permute(1,2,0)
+                        ref_local_n = render_geo_pkg["rendered_normal"].permute(1,2,0)
                         ref_local_n = ref_local_n.reshape(-1,3)[valid_indices]
 
-                        ref_local_d = render_dual_pkg['rendered_distance'].squeeze()
+                        ref_local_d = render_geo_pkg['rendered_distance'].squeeze()
                         # rays_d = viewpoint_cam.get_rays()
                         # rendered_normal2 = render_pkg["rendered_normal"].permute(1,2,0).reshape(-1,3)
                         # ref_local_d = render_pkg['plane_depth'].view(-1) * ((rendered_normal2 * rays_d.reshape(-1,3)).sum(-1).abs())
@@ -411,6 +411,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             ncc_loss = ncc_weight * ncc.mean()
                             geo_loss += ncc_loss
 
+
             geo_loss.backward(retain_graph=True)
 
             with torch.no_grad():
@@ -420,10 +421,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 # store accumulated geo loss
                 if iteration < opt.densify_until_iter:
-                    mask = (render_dual_pkg["out_observe"] > 0) & dual_visibility_filter
+                    mask = (render_geo_pkg["out_observe"] > 0) & dual_visibility_filter
                     gaussians.max_radii2D[mask] = torch.max(gaussians.max_radii2D[mask], radii[mask])
-                    dual_viewspace_point_tensor = render_dual_pkg["viewspace_points_abs"]
-                    dual_viewspace_point_tensor_abs = render_dual_pkg["viewspace_points_abs"]
+                    dual_viewspace_point_tensor = render_geo_pkg["viewspace_points_abs"]
+                    dual_viewspace_point_tensor_abs = render_geo_pkg["viewspace_points_abs"]
                     gaussians.add_geo_densification_stats(dual_viewspace_point_tensor, dual_viewspace_point_tensor_abs, visibility_filter)
                     # print("Add geo densification stats")
 
