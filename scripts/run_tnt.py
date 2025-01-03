@@ -27,7 +27,7 @@ for id, scene in enumerate(scenes):
     print(cmd)
     os.system(cmd)
     
-    common_args = f" -r2 --ncc_scale 0.5 --data_device {data_devices[id]} --densify_abs_grad_threshold 0.00015 --opacity_cull_threshold 0.05 --exposure_compensation --checkpoint_iterations 7_099 10_099 14_099 17_099 20_099 24_099 27_099"
+    common_args = f" -r2 --ncc_scale 0.5 --data_device {data_devices[id]} --densify_abs_grad_threshold 0.00015 --opacity_cull_threshold 0.05 --exposure_compensation --checkpoint_iterations 7_099 14_099 20_099 27_099"
     cmd = f'CUDA_VISIBLE_DEVICES={gpu_id} python train.py -s {data_base_path}/{scene} -m {out_base_path}/{out_name}/{scene} {common_args}'
     print(cmd)
     os.system(cmd)
