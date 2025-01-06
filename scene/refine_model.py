@@ -48,8 +48,8 @@ class RefineImgGaussianModel:
         self._rotation = gs_model._rotation.detach().clone().requires_grad_(True).to("cuda")
         self._opacity = gs_model._opacity.detach().clone().requires_grad_(True).to("cuda")
 
-        self.max_radii2D = gs_model.max_radii2D
-        self.max_weight = gs_model.max_weight
+        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        self.max_weight = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         self.xyz_image_gradient_accum = torch.empty(0)
         self.xyz_image_gradient_accum_abs = torch.empty(0)
         self.denom = torch.empty(0)
@@ -209,12 +209,18 @@ class RefineImgGaussianModel:
                                                     max_steps=training_args.position_lr_max_steps)
         
     def set_base_grad_to_zero(self):
-        self._xyz[:self._base_count].grad.zero_()
-        # self._features_dc[:self._base_count].grad.zero_()
-        # self._features_rest[:self._base_count].grad.zero_()
-        self._scaling[:self._base_count].grad.zero_()
-        self._rotation[:self._base_count].grad.zero_()
-        # self._opacity[:self._base_count].grad.zero_()
+        if self._xyz.grad is not None:
+            self._xyz.grad[:self._base_count].zero_()
+        if self._features_dc.grad is not None:
+            self._features_dc.grad[:self._base_count].zero_()
+        if self._features_rest.grad is not None:
+            self._features_rest.grad[:self._base_count].zero_()
+        if self._scaling.grad is not None:
+            self._scaling.grad[:self._base_count].zero_()
+        if self._rotation.grad is not None:
+            self._rotation.grad[:self._base_count].zero_()
+        if self._opacity.grad is not None:
+            self._opacity.grad[:self._base_count].zero_()
 
     def clip_grad(self, norm=1.0):
         for group in self.optimizer.param_groups:

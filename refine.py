@@ -66,7 +66,6 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
-    pipe.debug = True
 
     for iteration in range(first_iter, opt.iterations + 1):
         iter_start.record()
@@ -130,7 +129,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
                 refine_gaussians.max_radii2D[mask] = torch.max(refine_gaussians.max_radii2D[mask], radii[mask])
                 viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
                 refine_gaussians.add_image_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
-                refine_gaussians.increment_denom()
+                refine_gaussians.increment_denom(visibility_filter)
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
@@ -144,7 +143,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
 
             # Optimizer step
             if iteration < opt.iterations:
-                refine_gaussians.set_base_count_tensor_grad_to_zero()
+                refine_gaussians.set_base_grad_to_zero()
                 refine_gaussians.optimizer.step()
                 app_model.optimizer.step()
                 refine_gaussians.optimizer.zero_grad(set_to_none=True)
@@ -196,8 +195,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
         if tb_writer:
-            tb_writer.add_histogram("scene/opacity_histogram", scene.refine_gaussians.get_opacity, iteration)
-            tb_writer.add_scalar('total_points', scene.refine_gaussians.get_xyz.shape[0], iteration)
+            tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
+            tb_writer.add_scalar('total_points', gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
 def prepare_output_and_logger(args):    
