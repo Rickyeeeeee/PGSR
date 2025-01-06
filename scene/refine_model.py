@@ -208,6 +208,14 @@ class RefineImgGaussianModel:
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
         
+    def set_base_grad_to_zero(self):
+        self._xyz[:self._base_count].grad.zero_()
+        # self._features_dc[:self._base_count].grad.zero_()
+        # self._features_rest[:self._base_count].grad.zero_()
+        self._scaling[:self._base_count].grad.zero_()
+        self._rotation[:self._base_count].grad.zero_()
+        # self._opacity[:self._base_count].grad.zero_()
+
     def clip_grad(self, norm=1.0):
         for group in self.optimizer.param_groups:
             torch.nn.utils.clip_grad_norm_(group["params"][0], norm)
@@ -416,8 +424,8 @@ class RefineImgGaussianModel:
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
-        selected_pts_mask = torch.logical_and(selected_pts_mask,
-                                              torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
+        selected_pts_mask[self._base_count:] = torch.logical_and(selected_pts_mask[self._base_count:],
+                                              torch.max(self.get_scaling[self._base_count:], dim=1).values <= self.percent_dense*scene_extent)
         if selected_pts_mask.sum() + n_init_points > self.max_all_points:
             limited_num = self.max_all_points - n_init_points
             grads_tmp = grads.squeeze().clone()

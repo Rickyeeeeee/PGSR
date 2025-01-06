@@ -162,7 +162,7 @@ class RefinementParams(ParamGroup):
         self.scale_loss_weight = 100.0
         
         self.opacity_cull_threshold = 0.005
-        self.densify_abs_grad_threshold = 0.0002
+        self.densify_abs_grad_threshold = 0.0005
         self.abs_split_radii2D_threshold = 20
         self.max_abs_split_points = 50_000
         self.max_all_points = 6000_000

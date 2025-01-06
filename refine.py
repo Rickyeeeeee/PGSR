@@ -45,6 +45,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians, load_iteration=load_iteration)
     refine_gaussians = RefineImgGaussianModel(gaussians)
+    refine_gaussians.training_setup(opt)
 
     app_model = AppModel()
     app_model.train()
@@ -78,7 +79,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
         gt_image, _ = viewpoint_cam.get_image()
         
         bg = torch.rand((3), device="cuda") if opt.random_background else background
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, app_model=app_model,
+        render_pkg = render(viewpoint_cam, refine_gaussians, pipe, bg, app_model=app_model,
                             return_plane=False, return_depth_normal=False)
         image, viewspace_point_tensor, visibility_filter, radii = \
             render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
@@ -95,7 +96,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
 
         # scale loss
         if visibility_filter.sum() > 0:
-            scale = gaussians.get_scaling[visibility_filter]
+            scale = refine_gaussians.get_scaling[visibility_filter]
             sorted_scale, _ = torch.sort(scale, dim=-1)
             min_scale_loss = sorted_scale[...,0]
             loss += opt.scale_loss_weight * min_scale_loss.mean()
@@ -116,7 +117,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background), app_model)
+            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, refine_gaussians, render, (pipe, background), app_model)
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 point_cloud_path = os.path.join(scene.model_path, "point_cloud/iteration_{}".format(iteration + load_iteration))
@@ -129,6 +130,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
                 refine_gaussians.max_radii2D[mask] = torch.max(refine_gaussians.max_radii2D[mask], radii[mask])
                 viewspace_point_tensor_abs = render_pkg["viewspace_points_abs"]
                 refine_gaussians.add_image_densification_stats(viewspace_point_tensor, viewspace_point_tensor_abs, visibility_filter)
+                refine_gaussians.increment_denom()
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
@@ -142,6 +144,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
 
             # Optimizer step
             if iteration < opt.iterations:
+                refine_gaussians.set_base_count_tensor_grad_to_zero()
                 refine_gaussians.optimizer.step()
                 app_model.optimizer.step()
                 refine_gaussians.optimizer.zero_grad(set_to_none=True)
@@ -149,13 +152,13 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration+load_iteration) + ".pth")
+                torch.save((refine_gaussians.capture(), iteration+load_iteration), scene.model_path + "/chkpnt" + str(iteration+load_iteration) + ".pth")
                 app_model.save_weights(scene.model_path, iteration+load_iteration)
     
     app_model.save_weights(scene.model_path, opt.iterations+load_iteration)
     torch.cuda.empty_cache()
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, app_model):
+def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, gaussians, renderFunc, renderArgs, app_model):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
@@ -172,7 +175,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 l1_test = 0.0
                 psnr_test = 0.0
                 for idx, viewpoint in enumerate(config['cameras']):
-                    out = renderFunc(viewpoint, scene.gaussians, *renderArgs, app_model=app_model)
+                    out = renderFunc(viewpoint, gaussians, *renderArgs, app_model=app_model)
                     image = out["render"]
                     if 'app_image' in out:
                         image = out['app_image']
@@ -193,8 +196,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
         if tb_writer:
-            tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
-            tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
+            tb_writer.add_histogram("scene/opacity_histogram", scene.refine_gaussians.get_opacity, iteration)
+            tb_writer.add_scalar('total_points', scene.refine_gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
 def prepare_output_and_logger(args):    
@@ -232,10 +235,10 @@ if __name__ == "__main__":
     parser.add_argument('--debug_from', type=int, default=-100)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
     parser.add_argument('--load_iteration', type=int, default=30_000)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[1_000])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[1_000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[500, 1_000, 2_000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[500, 1_000, 2_000])
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
+    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[500, 1_000, 2_000])
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -244,7 +247,6 @@ if __name__ == "__main__":
     # Initialize system state (RNG)
     safe_state(args.quiet)
     setup_seed(22)
-
 
     # Start GUI server, configure and run training
     # network_gui.init(args.ip, args.port)
