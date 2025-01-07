@@ -211,16 +211,16 @@ class RefineImgGaussianModel:
     def set_base_grad_to_zero(self):
         if self._xyz.grad is not None:
             self._xyz.grad[:self._base_count].zero_()
-        if self._features_dc.grad is not None:
-            self._features_dc.grad[:self._base_count].zero_()
-        if self._features_rest.grad is not None:
-            self._features_rest.grad[:self._base_count].zero_()
+        # if self._features_dc.grad is not None:
+        #     self._features_dc.grad[:self._base_count].zero_()
+        # if self._features_rest.grad is not None:
+        #     self._features_rest.grad[:self._base_count].zero_()
         if self._scaling.grad is not None:
             self._scaling.grad[:self._base_count].zero_()
         if self._rotation.grad is not None:
             self._rotation.grad[:self._base_count].zero_()
-        if self._opacity.grad is not None:
-            self._opacity.grad[:self._base_count].zero_()
+        # if self._opacity.grad is not None:
+        #     self._opacity.grad[:self._base_count].zero_()
 
     def clip_grad(self, norm=1.0):
         for group in self.optimizer.param_groups:
@@ -267,7 +267,7 @@ class RefineImgGaussianModel:
         PlyData([el]).write(path)
 
     def set_base_mask_to_false(self, mask):
-        mask[self._base_count:] = False
+        mask[:self._base_count] = False
 
     def reset_opacity(self, reset_base=False):
         opacities_new = inverse_sigmoid(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.01))

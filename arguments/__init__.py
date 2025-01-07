@@ -143,11 +143,11 @@ def get_combined_args(parser : ArgumentParser):
 
 class RefinementParams(ParamGroup):
     def __init__(self, parser):
-        self.iterations = 2_000
-        self.position_lr_init = 0.0000016
+        self.iterations = 18_000
+        self.position_lr_init = 0.00016
         self.position_lr_final = 0.0000016
         self.position_lr_delay_mult = 0.01
-        self.position_lr_max_steps = 2_000
+        self.position_lr_max_steps = 18_000
         self.feature_lr = 0.0025
         self.opacity_lr = 0.05
         self.scaling_lr = 0.005
@@ -155,9 +155,9 @@ class RefinementParams(ParamGroup):
         self.percent_dense = 0.001
         self.lambda_dssim = 0.2
         self.densification_interval = 100
-        self.opacity_reset_interval = 2_000
+        self.opacity_reset_interval = 3_000
         self.densify_from_iter = 0
-        self.densify_until_iter = 1_000
+        self.densify_until_iter = 9_000
         self.densify_grad_threshold = 0.0002
         self.scale_loss_weight = 100.0
         

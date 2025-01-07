@@ -94,11 +94,11 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
         loss = image_loss.clone()
 
         # scale loss
-        if visibility_filter.sum() > 0:
-            scale = refine_gaussians.get_scaling[visibility_filter]
-            sorted_scale, _ = torch.sort(scale, dim=-1)
-            min_scale_loss = sorted_scale[...,0]
-            loss += opt.scale_loss_weight * min_scale_loss.mean()
+        # if visibility_filter.sum() > 0:
+        #     scale = refine_gaussians.get_scaling[visibility_filter]
+        #     sorted_scale, _ = torch.sort(scale, dim=-1)
+        #     min_scale_loss = sorted_scale[...,0]
+        #     loss += opt.scale_loss_weight * min_scale_loss.mean()
         
         loss.backward()
         iter_end.record()
@@ -139,7 +139,7 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
             # reset_opacity
             if iteration < opt.densify_until_iter:
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
-                    refine_gaussians.reset_opacity()
+                    refine_gaussians.reset_opacity(reset_base=True)
 
             # Optimizer step
             if iteration < opt.iterations:
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[500, 1_000, 2_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[500, 1_000, 2_000])
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[500, 1_000, 2_000])
+    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
