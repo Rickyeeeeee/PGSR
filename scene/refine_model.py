@@ -43,10 +43,14 @@ class RefineImgGaussianModel:
 
         self._xyz = gs_model._xyz.detach().clone().requires_grad_(True).to("cuda")
         self._features_dc = gs_model._features_dc.detach().clone().requires_grad_(True).to("cuda")
-        self._features_rest = gs_model._features_rest.detach().clone().requires_grad_(True).to("cuda")
+        # self._features_dc = torch.zeros_like(gs_model._features_dc, device="cuda").requires_grad_(True)
+        # self._features_rest = gs_model._features_rest.detach().clone().requires_grad_(True).to("cuda")
+        self._features_rest = torch.zeros_like(gs_model._features_rest, device="cuda").requires_grad_(True)
         self._scaling = gs_model._scaling.detach().clone().requires_grad_(True).to("cuda")
         self._rotation = gs_model._rotation.detach().clone().requires_grad_(True).to("cuda")
-        self._opacity = gs_model._opacity.detach().clone().requires_grad_(True).to("cuda")
+        # self._opacity = gs_model._opacity.detach().clone().requires_grad_(True).to("cuda")
+        opacity = inverse_sigmoid(0.1 * torch.ones((self._xyz.shape[0], 1), dtype=torch.float, device="cuda"))
+        self._opacity = nn.Parameter(opacity.requires_grad_(True))
 
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         self.max_weight = torch.zeros((self.get_xyz.shape[0]), device="cuda")

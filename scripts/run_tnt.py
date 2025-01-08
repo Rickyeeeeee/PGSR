@@ -4,7 +4,7 @@ scenes = ['Courthouse', 'Truck', 'Caterpillar', 'Barn', 'Meetingroom', 'Ignatius
 data_devices = ['cpu', 'cuda', 'cuda','cuda','cuda', 'cuda']
 data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/tnt_dataset/tnt'
 out_base_path='/workspace/work/Outputs/tnt'
-out_name='pgsr'
+out_name='refine_reset'
 gpu_id=3
 
 for id, scene in enumerate(scenes):
