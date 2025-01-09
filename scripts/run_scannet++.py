@@ -4,14 +4,14 @@ scenes = ['Courthouse', 'Truck', 'Caterpillar', 'Barn', 'Meetingroom', 'Ignatius
 data_devices = ['cpu', 'cuda', 'cuda','cuda','cuda', 'cuda']
 data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/tnt_dataset/tnt'
 out_base_path='/workspace/work/Outputs/tnt'
-out_name='refine_reset'
+out_name='pgsr'
 gpu_id=3
 
 for id, scene in enumerate(scenes):
 
-#     cmd = f'rm -rf {out_base_path}/{out_name}/{scene}/*'
-#     print(cmd)
-#     os.system(cmd)
+    cmd = f'rm -rf {out_base_path}/{out_name}/{scene}/*'
+    print(cmd)
+    os.system(cmd)
     
     # create folder name 0
     # cmd = f'mkdir -p {data_base_path}/{scene}/sparse/0'

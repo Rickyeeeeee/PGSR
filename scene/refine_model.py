@@ -32,6 +32,14 @@ class RefineImgGaussianModel:
         self.active_sh_degree = gs_model.active_sh_degree
         self.max_sh_degree = gs_model.max_sh_degree
 
+        # self.setup_functions()
+        self.scaling_activation = gs_model.scaling_activation
+        self.scaling_inverse_activation = gs_model.scaling_inverse_activation
+        self.covariance_activation = gs_model.covariance_activation
+        self.opacity_activation = gs_model.opacity_activation
+        self.inverse_opacity_activation = gs_model.inverse_opacity_activation
+        self.rotation_activation = gs_model.rotation_activation
+
         self._base_xyz = gs_model._xyz.detach().clone().requires_grad_(False).to("cuda")
         self._base_features_dc = gs_model._features_dc.detach().clone().requires_grad_(False).to("cuda")
         self._base_features_rest = gs_model._features_rest.detach().clone().requires_grad_(False).to("cuda")
@@ -41,14 +49,19 @@ class RefineImgGaussianModel:
 
         self._base_count = self._base_xyz.shape[0] # immutable
 
-        self._xyz = gs_model._xyz.detach().clone().requires_grad_(True).to("cuda")
-        self._features_dc = gs_model._features_dc.detach().clone().requires_grad_(True).to("cuda")
+        # Prune opacity > 0.9
+        mask_max = (self.opacity_activation(self._base_opacity) <= 0.9).squeeze()
+        mask_min = (self.opacity_activation(self._base_opacity) >= 0.0).squeeze()
+        mask = torch.logical_and(mask_max, mask_min)
+
+        self._xyz = gs_model._xyz.detach().clone()[mask].requires_grad_(True).to("cuda")
+        self._features_dc = gs_model._features_dc.detach().clone()[mask].requires_grad_(True).to("cuda")
+        self._features_rest = gs_model._features_rest.detach().clone()[mask].requires_grad_(True).to("cuda")
+        self._scaling = gs_model._scaling.detach().clone()[mask].requires_grad_(True).to("cuda")
+        self._rotation = gs_model._rotation.detach().clone()[mask].requires_grad_(True).to("cuda")
+        self._opacity = gs_model._opacity.detach().clone()[mask].requires_grad_(True).to("cuda")
         # self._features_dc = torch.zeros_like(gs_model._features_dc, device="cuda").requires_grad_(True)
-        # self._features_rest = gs_model._features_rest.detach().clone().requires_grad_(True).to("cuda")
-        self._features_rest = torch.zeros_like(gs_model._features_rest, device="cuda").requires_grad_(True)
-        self._scaling = gs_model._scaling.detach().clone().requires_grad_(True).to("cuda")
-        self._rotation = gs_model._rotation.detach().clone().requires_grad_(True).to("cuda")
-        # self._opacity = gs_model._opacity.detach().clone().requires_grad_(True).to("cuda")
+        # self._features_rest = torch.zeros_like(gs_model._features_rest, device="cuda").requires_grad_(True)
         opacity = inverse_sigmoid(0.1 * torch.ones((self._xyz.shape[0], 1), dtype=torch.float, device="cuda"))
         self._opacity = nn.Parameter(opacity.requires_grad_(True))
 
@@ -63,14 +76,6 @@ class RefineImgGaussianModel:
         self.spatial_lr_scale = 0
         self.knn_dists = None
         self.knn_idx = None
-
-        # self.setup_functions()
-        self.scaling_activation = gs_model.scaling_activation
-        self.scaling_inverse_activation = gs_model.scaling_inverse_activation
-        self.covariance_activation = gs_model.covariance_activation
-        self.opacity_activation = gs_model.opacity_activation
-        self.inverse_opacity_activation = gs_model.inverse_opacity_activation
-        self.rotation_activation = gs_model.rotation_activation
 
         self.use_app = False
 
@@ -213,16 +218,17 @@ class RefineImgGaussianModel:
                                                     max_steps=training_args.position_lr_max_steps)
         
     def set_base_grad_to_zero(self):
-        if self._xyz.grad is not None:
-            self._xyz.grad[:self._base_count].zero_()
+        pass
+        # if self._xyz.grad is not None:
+        #     self._xyz.grad[:self._base_count].zero_()
         # if self._features_dc.grad is not None:
         #     self._features_dc.grad[:self._base_count].zero_()
         # if self._features_rest.grad is not None:
         #     self._features_rest.grad[:self._base_count].zero_()
-        if self._scaling.grad is not None:
-            self._scaling.grad[:self._base_count].zero_()
-        if self._rotation.grad is not None:
-            self._rotation.grad[:self._base_count].zero_()
+        # if self._scaling.grad is not None:
+        #     self._scaling.grad[:self._base_count].zero_()
+        # if self._rotation.grad is not None:
+        #     self._rotation.grad[:self._base_count].zero_()
         # if self._opacity.grad is not None:
         #     self._opacity.grad[:self._base_count].zero_()
 
@@ -276,8 +282,8 @@ class RefineImgGaussianModel:
     def reset_opacity(self, reset_base=False):
         opacities_new = inverse_sigmoid(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.01))
         # Don't reset base opacities
-        if not reset_base:
-            opacities_new[:self._base_count] = self._base_opacity[:self._base_count]
+        # if not reset_base:
+        #     opacities_new[:self._base_count] = self._base_opacity[:self._base_count]
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"]
 
@@ -390,27 +396,27 @@ class RefineImgGaussianModel:
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
-        self.set_base_mask_to_false(selected_pts_mask)
+        # self.set_base_mask_to_false(selected_pts_mask)
         if selected_pts_mask.sum() + n_init_points > self.max_all_points:
             limited_num = self.max_all_points - n_init_points
             padded_grad[~selected_pts_mask] = 0
             ratio = limited_num / float(n_init_points)
             threshold = torch.quantile(padded_grad, (1.0-ratio))
             selected_pts_mask = torch.where(padded_grad > threshold, True, False)
-            self.set_base_mask_to_false(selected_pts_mask)
+            # self.set_base_mask_to_false(selected_pts_mask)
             # print(f"split {selected_pts_mask.sum()}, raddi2D {padded_max_radii2D.max()} ,{padded_max_radii2D.median()}")
         else:
             padded_grads_abs[selected_pts_mask] = 0
             mask = (torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent) & (padded_max_radii2D > self.abs_split_radii2D_threshold)
             padded_grads_abs[~mask] = 0
             selected_pts_mask_abs = torch.where(padded_grads_abs >= grad_abs_threshold, True, False)
-            self.set_base_mask_to_false(selected_pts_mask_abs)
+            # self.set_base_mask_to_false(selected_pts_mask_abs)
             limited_num = min(self.max_all_points - n_init_points - selected_pts_mask.sum(), self.max_abs_split_points)
             if selected_pts_mask_abs.sum() > limited_num:
                 ratio = limited_num / float(n_init_points)
                 threshold = torch.quantile(padded_grads_abs, (1.0-ratio))
                 selected_pts_mask_abs = torch.where(padded_grads_abs > threshold, True, False)
-                self.set_base_mask_to_false(selected_pts_mask_abs)
+                # self.set_base_mask_to_false(selected_pts_mask_abs)
             selected_pts_mask = torch.logical_or(selected_pts_mask, selected_pts_mask_abs)
             # print(f"split {selected_pts_mask.sum()}, abs {selected_pts_mask_abs.sum()}, raddi2D {padded_max_radii2D.max()} ,{padded_max_radii2D.median()}")
 
@@ -434,8 +440,8 @@ class RefineImgGaussianModel:
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
-        selected_pts_mask[self._base_count:] = torch.logical_and(selected_pts_mask[self._base_count:],
-                                              torch.max(self.get_scaling[self._base_count:], dim=1).values <= self.percent_dense*scene_extent)
+        # selected_pts_mask[self._base_count:] = torch.logical_and(selected_pts_mask[self._base_count:],
+        #                                       torch.max(self.get_scaling[self._base_count:], dim=1).values <= self.percent_dense*scene_extent)
         if selected_pts_mask.sum() + n_init_points > self.max_all_points:
             limited_num = self.max_all_points - n_init_points
             grads_tmp = grads.squeeze().clone()
@@ -480,7 +486,7 @@ class RefineImgGaussianModel:
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
 
         # prune app points only
-        self.set_base_mask_to_false(prune_mask)
+        # self.set_base_mask_to_false(prune_mask)
         self.prune_points(prune_mask)
         # print(f"all points {self._xyz.shape[0]}")
         torch.cuda.empty_cache()

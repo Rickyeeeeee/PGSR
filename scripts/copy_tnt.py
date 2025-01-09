@@ -5,7 +5,7 @@ data_devices = ['cpu', 'cuda', 'cuda','cuda','cuda', 'cuda']
 data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/tnt_dataset/tnt'
 out_base_path='/workspace/work/Outputs/tnt'
 in_name='pgsr'
-out_name='refine_reset'
+out_name='prune_reset_refine'
 gpu_id=3
 
 for scene in scenes:
