@@ -146,12 +146,12 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
 
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-        volume = o3d.pipelines.integration.ScalableTSDFVolume(
-            voxel_length=voxel_size,
-            sdf_trunc=4.0*voxel_size,
-            color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 
         if not skip_train:
+            volume = o3d.pipelines.integration.ScalableTSDFVolume(
+                voxel_length=voxel_size,
+                sdf_trunc=4.0*voxel_size,
+                color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
             render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), scene, gaussians, pipeline, background, 
                        max_depth=max_depth, volume=volume, use_depth_filter=use_depth_filter)
             print(f"extract_triangle_mesh")
