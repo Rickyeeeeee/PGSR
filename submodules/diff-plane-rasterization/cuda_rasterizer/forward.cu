@@ -319,8 +319,16 @@ renderCUDA(
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
 
 	// Initialize helper variables
+	// Total transmittance for volume rendering
 	float T = 1.0f;
+	// Total weight for surface splatting normalization
 	float total_weight = 0.0f;
+
+	bool start_volume = false;
+	float average_surf_dis = -1.0f;
+	float surf_count = 0.0f;
+	const float dis_threshold = 1e-6;
+
 	uint32_t contributor = 0;
 	uint32_t last_contributor = 0;
 	float C[CHANNELS] = { 0 };
@@ -364,19 +372,53 @@ renderCUDA(
 			// Avoid numerical instabilities (see paper appendix). 
 			float alpha = min(0.99f, con_o.w * exp(power));
 			float weight = min(0.99f, exp(power));
-			total_weight += weight;
 			if (alpha < 1.0f / 255.0f)
 				continue;
-			float test_T = T * (1 - alpha);
-			if (test_T < 0.0001f)
+			if (!start_volume)
 			{
-				done = true;
-				continue;
+
+				if (average_surf_dis < 0.0f)
+				{
+					average_surf_dis = all_map[collected_id[j] * ALL_MAP + 4];
+					surf_count = 1.0f;
+				}
+				else
+				{
+					float dis = all_map[collected_id[j] * ALL_MAP + 4];
+					if (abs(dis - average_surf_dis) > dis_threshold)
+					{
+						start_volume = true;
+						for (int ch = 0; ch < CHANNELS; ch++)
+							C[ch] = C[ch] / total_weight * alpha;
+					}
+					else
+					{
+						average_surf_dis = (average_surf_dis * surf_count + dis) / (surf_count + 1.0f);
+						surf_count += 1.0f;
+						total_weight += weight;
+					}
+				}
+			}
+			float multiplier = 0.0f;
+			if (start_volume)
+			{
+				float test_T = T * (1 - alpha);
+				if (test_T < 0.0001f)
+				{
+					done = true;
+					continue;
+				}
+				multiplier = alpha * T;
+			}
+			else
+			{
+				total_weight += weight;
+				multiplier = weight;
 			}
 
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
-				C[ch] += features[collected_id[j] * CHANNELS + ch] * weight;
+				C[ch] += features[collected_id[j] * CHANNELS + ch] * multiplier;
 			if (render_geo) {
 				for (int ch = 0; ch < ALL_MAP; ch++)
 					All_map[ch] += all_map[collected_id[j] * ALL_MAP + ch] * alpha * T;
@@ -402,9 +444,7 @@ renderCUDA(
 		final_weight[pix_id] = total_weight;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
-			// out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
-			// out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8) + T * bg_color[ch];
-			out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8);
+			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 		if (render_geo) {
 			for (int ch = 0; ch < ALL_MAP; ch++)
 				out_all_map[ch * H * W + pix_id] = All_map[ch];
