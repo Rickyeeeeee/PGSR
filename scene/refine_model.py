@@ -210,17 +210,17 @@ class RefineImgGaussianModel:
         
     def set_base_grad_to_zero(self):
         if self._xyz.grad is not None:
-            self._xyz.grad[:self._base_count].zero_()
+            self._xyz.grad[:].zero_()
         # if self._features_dc.grad is not None:
-        #     self._features_dc.grad[:self._base_count].zero_()
+        #     self._features_dc.grad[:].zero_()
         # if self._features_rest.grad is not None:
-        #     self._features_rest.grad[:self._base_count].zero_()
+        #     self._features_rest.grad[:].zero_()
         if self._scaling.grad is not None:
-            self._scaling.grad[:self._base_count].zero_()
+            self._scaling.grad[:].zero_()
         if self._rotation.grad is not None:
-            self._rotation.grad[:self._base_count].zero_()
-        # if self._opacity.grad is not None:
-        #     self._opacity.grad[:self._base_count].zero_()
+            self._rotation.grad[:].zero_()
+        if self._opacity.grad is not None:
+            self._opacity.grad[:].zero_()
 
     def clip_grad(self, norm=1.0):
         for group in self.optimizer.param_groups:

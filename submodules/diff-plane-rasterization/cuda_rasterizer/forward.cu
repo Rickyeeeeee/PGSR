@@ -285,6 +285,7 @@ renderCUDA(
 	const float* __restrict__ all_map,
 	const float4* __restrict__ conic_opacity,
 	float* __restrict__ final_T,
+	float* __restrict__ final_weight,
 	uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
@@ -319,6 +320,7 @@ renderCUDA(
 
 	// Initialize helper variables
 	float T = 1.0f;
+	float total_weight = 0.0f;
 	uint32_t contributor = 0;
 	uint32_t last_contributor = 0;
 	float C[CHANNELS] = { 0 };
@@ -361,6 +363,8 @@ renderCUDA(
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
 			float alpha = min(0.99f, con_o.w * exp(power));
+			float weight = min(0.99f, exp(power));
+			total_weight += weight;
 			if (alpha < 1.0f / 255.0f)
 				continue;
 			float test_T = T * (1 - alpha);
@@ -372,7 +376,7 @@ renderCUDA(
 
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
-				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
+				C[ch] += features[collected_id[j] * CHANNELS + ch] * weight;
 			if (render_geo) {
 				for (int ch = 0; ch < ALL_MAP; ch++)
 					All_map[ch] += all_map[collected_id[j] * ALL_MAP + ch] * alpha * T;
@@ -395,9 +399,12 @@ renderCUDA(
 	if (inside)
 	{
 		final_T[pix_id] = T;
+		final_weight[pix_id] = total_weight;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
-			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+			// out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+			// out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8) + T * bg_color[ch];
+			out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8);
 		if (render_geo) {
 			for (int ch = 0; ch < ALL_MAP; ch++)
 				out_all_map[ch * H * W + pix_id] = All_map[ch];
@@ -420,6 +427,7 @@ void FORWARD::render(
 	const float* all_map,
 	const float4* conic_opacity,
 	float* final_T,
+	float* final_weight,
 	uint32_t* n_contrib,
 	const float* bg_color,
 	float* out_color,
@@ -441,6 +449,7 @@ void FORWARD::render(
 		all_map,
 		conic_opacity,
 		final_T,
+		final_weight,
 		n_contrib,
 		bg_color,
 		out_color,

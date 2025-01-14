@@ -71,9 +71,13 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
         iter_start.record()
         refine_gaussians.update_learning_rate(iteration)
 
+        # if not viewpoint_stack:
+        #     viewpoint_stack = scene.getTrainCameras().copy()
+        # viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
-        viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
+            viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
+            print("Viewpoint: ", viewpoint_cam.image_name)
 
         gt_image, _ = viewpoint_cam.get_image()
         

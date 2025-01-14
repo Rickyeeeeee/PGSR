@@ -410,6 +410,7 @@ renderCUDA(
 	const float* __restrict__ all_maps,
 	const float* __restrict__ all_map_pixels,
 	const float* __restrict__ final_Ts,
+	const float* __restrict__ final_weights,
 	const uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_dout_all_maps,
@@ -450,6 +451,7 @@ renderCUDA(
 	// product of all (1 - alpha) factors. 
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
+	const float weight_final = inside ? final_weights[pix_id] : 0;
 
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
@@ -539,7 +541,8 @@ renderCUDA(
 				continue;
 
 			T = T / (1.f - alpha);
-			const float dchannel_dcolor = alpha * T;
+			const float dchannel_dfeature = alpha * T;
+			const float dchannel_dcolor = min(0.99f, G) / (weight_final + 1.0e-8);
 
 			// Propagate gradients to per-Gaussian colors and keep
 			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
@@ -550,11 +553,11 @@ renderCUDA(
 			{
 				const float c = collected_colors[ch * BLOCK_SIZE + j];
 				// Update last color (to be used in the next iteration)
-				accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
+				// accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
 				last_color[ch] = c;
 
 				const float dL_dchannel = dL_dpixel[ch];
-				dL_dalpha += (c - accum_rec[ch]) * dL_dchannel;
+				// dL_dalpha += (c - accum_rec[ch]) * dL_dchannel;
 				// Update the gradients w.r.t. color of the Gaussian. 
 				// Atomic, since this pixel is just one of potentially
 				// many that were affected by this Gaussian.
@@ -573,7 +576,7 @@ renderCUDA(
 					// Update the gradients w.r.t. color of the Gaussian. 
 					// Atomic, since this pixel is just one of potentially
 					// many that were affected by this Gaussian.
-					atomicAdd(&(dL_dall_map[global_id * MAP_N + ch]), dchannel_dcolor * dL_dchannel);
+					atomicAdd(&(dL_dall_map[global_id * MAP_N + ch]), dchannel_dfeature * dL_dchannel);
 				}
 			}
 			
@@ -691,6 +694,7 @@ void BACKWARD::render(
 	const float* all_maps,
 	const float* all_map_pixels,
 	const float* final_Ts,
+	const float* final_weights,
 	const uint32_t* n_contrib,
 	const float* dL_dpixels,
 	const float* dL_dout_all_map,
@@ -715,6 +719,7 @@ void BACKWARD::render(
 		all_maps,
 		all_map_pixels,
 		final_Ts,
+		final_weights,
 		n_contrib,
 		dL_dpixels,
 		dL_dout_all_map,
