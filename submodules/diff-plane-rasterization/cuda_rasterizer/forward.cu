@@ -292,6 +292,7 @@ renderCUDA(
 	int* __restrict__ out_observe,
 	float* __restrict__ out_all_map,
 	float* __restrict__ out_plane_depth,
+	float* __restrict__ out_weight,
 	const bool render_geo)
 {
 	// Identify current tile and associated min/max pixel range.
@@ -325,6 +326,9 @@ renderCUDA(
 	uint32_t last_contributor = 0;
 	float C[CHANNELS] = { 0 };
 	float All_map[ALL_MAP] = { 0 };
+	float last_distance = -10.0f;
+	float dis_thres = 1.0;
+	bool is_surf = true;
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
@@ -368,14 +372,38 @@ renderCUDA(
 			if (alpha < 1.0f / 255.0f)
 				continue;
 			float test_T = T * (1 - alpha);
+			
+			// // int idx = collected_id[j];
+			float depth = all_map[collected_id[j] * ALL_MAP + 4] / 
+				-(all_map[collected_id[j] * ALL_MAP + 0] * ray.x + all_map[collected_id[j] * ALL_MAP + 1] * ray.y + all_map[collected_id[j] * ALL_MAP + 2] + 1.0e-8);
+			if (last_distance < 0.0f)
+			{
+				// float last_depth = All_map[4] / -(All_map[0] * ray.x + All_map[1] * ray.y + All_map[2] + 1.0e-8);
+				last_distance = depth;
+				// last_distance = all_map[collected_id[j] * ALL_MAP + ALL_MAP_DISTANCE];
+			}
+			else
+			{
+				// float distance = All_map[4] / -(All_map[0] * ray.x + All_map[1] * ray.y + All_map[2] + 1.0e-8);
+				float distance = depth;
+				// float distance = all_map[collected_id[j] * ALL_MAP + ALL_MAP_DISTANCE];
+				if (distance - last_distance > dis_thres)
+				{
+					
+					done = true;
+					// continue;
+				}
+				last_distance = distance;
+			}
+
 			if (test_T < 0.0001f)
 			{
 				done = true;
 				continue;
 			}
 
-			// Eq. (3) from 3D Gaussian splatting paper.
-			for (int ch = 0; ch < CHANNELS; ch++)
+							// Eq. (3) from 3D Gaussian splatting paper.
+				for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * weight;
 			if (render_geo) {
 				for (int ch = 0; ch < ALL_MAP; ch++)
@@ -400,11 +428,13 @@ renderCUDA(
 	{
 		final_T[pix_id] = T;
 		final_weight[pix_id] = total_weight;
+		out_weight[pix_id] = total_weight;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
 			// out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+			out_color[ch * H * W + pix_id] = C[ch];
 			// out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8) + T * bg_color[ch];
-			out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8);
+			// out_color[ch * H * W + pix_id] = C[ch] / (total_weight + 1.0e-8);
 		if (render_geo) {
 			for (int ch = 0; ch < ALL_MAP; ch++)
 				out_all_map[ch * H * W + pix_id] = All_map[ch];
@@ -434,6 +464,7 @@ void FORWARD::render(
 	int* out_observe,
 	float* out_all_map,
 	float* out_plane_depth,
+	float* out_weight,
 	const bool render_geo)
 {
 	renderCUDA<NUM_CHANNELS,NUM_ALL_MAP> << <grid, block >> > (
@@ -456,6 +487,7 @@ void FORWARD::render(
 		out_observe,
 		out_all_map,
 		out_plane_depth,
+		out_weight,
 		render_geo);
 }
 

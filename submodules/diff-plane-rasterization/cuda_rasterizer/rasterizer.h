@@ -54,6 +54,7 @@ namespace CudaRasterizer
 			int* out_observe,
 			float* out_all_map,
 			float* out_plane_depth,
+			float* out_weight,
 			const bool render_geo,
 			bool debug = false);
 
@@ -81,6 +82,7 @@ namespace CudaRasterizer
 			const float* dL_dpix,
 			const float* dL_dout_all_map,
 			const float* dL_dout_plane_depth,
+			const float* dL_dout_weight,
 			float* dL_dmean2D,
 			float* dL_dmean2D_abs,
 			float* dL_dconic,

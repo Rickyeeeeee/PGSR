@@ -32,7 +32,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
     return lambda;
 }
 
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const torch::Tensor& background,
 	const torch::Tensor& means3D,
@@ -72,6 +72,7 @@ RasterizeGaussiansCUDA(
   torch::Tensor out_observe = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
   torch::Tensor out_all_map = torch::full({NUM_ALL_MAP, H, W}, 0, float_opts);
   torch::Tensor out_plane_depth = torch::full({1, H, W}, 0, float_opts);
+  torch::Tensor out_weight = torch::full({1, H, W}, 0, float_opts);
   
   torch::Device device(torch::kCUDA);
   torch::TensorOptions options(torch::kByte);
@@ -118,10 +119,11 @@ RasterizeGaussiansCUDA(
 		out_observe.contiguous().data<int>(),
 		out_all_map.contiguous().data<float>(),
 		out_plane_depth.contiguous().data<float>(),
+		out_weight.contiguous().data<float>(),
 		render_geo,
 		debug);
   }
-  return std::make_tuple(rendered, out_color, radii, out_observe, out_all_map, out_plane_depth, geomBuffer, binningBuffer, imgBuffer);
+  return std::make_tuple(rendered, out_color, radii, out_observe, out_all_map, out_plane_depth, out_weight, geomBuffer, binningBuffer, imgBuffer);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
@@ -143,6 +145,7 @@ RasterizeGaussiansBackwardCUDA(
     const torch::Tensor& dL_dout_color,
 	const torch::Tensor& dL_dout_all_map,
 	const torch::Tensor& dL_dout_plane_depth,
+	const torch::Tensor& dL_dout_weight,
 	const torch::Tensor& sh,
 	const int degree,
 	const torch::Tensor& campos,
@@ -201,6 +204,7 @@ RasterizeGaussiansBackwardCUDA(
 	  dL_dout_color.contiguous().data<float>(),
 	  dL_dout_all_map.contiguous().data<float>(),
 	  dL_dout_plane_depth.contiguous().data<float>(),
+	  dL_dout_weight.contiguous().data<float>(),
 	  dL_dmeans2D.contiguous().data<float>(),
 	  dL_dmeans2D_abs.contiguous().data<float>(),
 	  dL_dconic.contiguous().data<float>(),  

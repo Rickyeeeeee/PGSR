@@ -71,19 +71,19 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
         iter_start.record()
         refine_gaussians.update_learning_rate(iteration)
 
-        # if not viewpoint_stack:
-        #     viewpoint_stack = scene.getTrainCameras().copy()
-        # viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
-            viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
-            print("Viewpoint: ", viewpoint_cam.image_name)
+        viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
+        # if not viewpoint_stack:
+        #     viewpoint_stack = scene.getTrainCameras().copy()
+        #     viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
+        #     print("Viewpoint: ", viewpoint_cam.image_name)
 
         gt_image, _ = viewpoint_cam.get_image()
         
         bg = torch.rand((3), device="cuda") if opt.random_background else background
         render_pkg = render(viewpoint_cam, refine_gaussians, pipe, bg, app_model=app_model,
-                            return_plane=False, return_depth_normal=False)
+                            return_plane=True, return_depth_normal=True)
         image, viewspace_point_tensor, visibility_filter, radii = \
             render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -98,12 +98,22 @@ def refinement(dataset, opt, pipe, testing_iterations, saving_iterations, checkp
         loss = image_loss.clone()
 
         # scale loss
-        # if visibility_filter.sum() > 0:
-        #     scale = refine_gaussians.get_scaling[visibility_filter]
-        #     sorted_scale, _ = torch.sort(scale, dim=-1)
-        #     min_scale_loss = sorted_scale[...,0]
-        #     loss += opt.scale_loss_weight * min_scale_loss.mean()
+        if visibility_filter.sum() > 0:
+            scale = refine_gaussians.get_scaling[visibility_filter]
+            sorted_scale, _ = torch.sort(scale, dim=-1)
+            min_scale_loss = sorted_scale[...,0]
+            loss += opt.scale_loss_weight * min_scale_loss.mean()
         
+        if iteration % 100 == 0:
+            # make the directory for debug images
+            debug_path = os.path.join(scene.model_path, "debug")
+            os.makedirs(debug_path, exist_ok=True)
+            # Save the rendered image
+            gt_img_show = ((gt_image).permute(1,2,0).clamp(0,1)[:,:,[2,1,0]]*255).detach().cpu().numpy().astype(np.uint8)
+            img_show = ((image).permute(1,2,0).clamp(0,1)[:,:,[2,1,0]]*255).detach().cpu().numpy().astype(np.uint8)
+            image_to_show = np.concatenate((gt_img_show, img_show), axis=1)
+            cv2.imwrite(os.path.join(debug_path, "%05d"%iteration + "_" + viewpoint_cam.image_name + ".jpg"), image_to_show)
+
         loss.backward()
         iter_end.record()
 

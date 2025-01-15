@@ -15,7 +15,7 @@
 #include <tuple>
 #include <string>
 	
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const torch::Tensor& background,
 	const torch::Tensor& means3D,
@@ -58,6 +58,7 @@ RasterizeGaussiansBackwardCUDA(
     const torch::Tensor& dL_dout_color,
 	const torch::Tensor& dL_dout_all_map,
 	const torch::Tensor& dL_dout_plane_depth,
+	const torch::Tensor& dL_dout_weight,
 	const torch::Tensor& sh,
 	const int degree,
 	const torch::Tensor& campos,

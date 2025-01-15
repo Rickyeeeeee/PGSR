@@ -415,6 +415,7 @@ renderCUDA(
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_dout_all_maps,
 	const float* __restrict__ dL_dout_plane_depths,
+	const float* __restrict__ dL_dout_weight,
 	float3* __restrict__ dL_dmean2D,
 	float3* __restrict__ dL_dmean2D_abs,
 	float4* __restrict__ dL_dconic2D,
@@ -451,7 +452,6 @@ renderCUDA(
 	// product of all (1 - alpha) factors. 
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
-	const float weight_final = inside ? final_weights[pix_id] : 0;
 
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
@@ -542,7 +542,7 @@ renderCUDA(
 
 			T = T / (1.f - alpha);
 			const float dchannel_dfeature = alpha * T;
-			const float dchannel_dcolor = min(0.99f, G) / (weight_final + 1.0e-8);
+			const float dchannel_dcolor = min(0.99f, G);
 
 			// Propagate gradients to per-Gaussian colors and keep
 			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
@@ -551,10 +551,10 @@ renderCUDA(
 			const int global_id = collected_id[j];
 			for (int ch = 0; ch < C; ch++)
 			{
-				const float c = collected_colors[ch * BLOCK_SIZE + j];
+				// const float c = collected_colors[ch * BLOCK_SIZE + j];
 				// Update last color (to be used in the next iteration)
 				// accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
-				last_color[ch] = c;
+				// last_color[ch] = c;
 
 				const float dL_dchannel = dL_dpixel[ch];
 				// dL_dalpha += (c - accum_rec[ch]) * dL_dchannel;
@@ -586,14 +586,19 @@ renderCUDA(
 
 			// Account for fact that alpha also influences how much of
 			// the background color is added if nothing left to blend
-			float bg_dot_dpixel = 0;
-			for (int i = 0; i < C; i++)
-				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
-			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
+			// float bg_dot_dpixel = 0;
+			// for (int i = 0; i < C; i++)
+			// 	bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
+			// dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
 
 			// Helpful reusable temporary variables
-			const float dL_dG = con_o.w * dL_dalpha;
+			float dL_dG = con_o.w * dL_dalpha + dL_dout_weight[pix_id];
+			for (int ch = 0; ch < C; ch++)
+			{
+				const float c = collected_colors[ch * BLOCK_SIZE + j];
+				dL_dG += dL_dpixel[ch] * c;
+			}
 			const float gdx = G * d.x;
 			const float gdy = G * d.y;
 			const float dG_ddelx = -gdx * con_o.x - gdy * con_o.y;
@@ -699,6 +704,7 @@ void BACKWARD::render(
 	const float* dL_dpixels,
 	const float* dL_dout_all_map,
 	const float* dL_dout_plane_depth,
+	const float* dL_dout_weight,
 	float3* dL_dmean2D,
 	float3* dL_dmean2D_abs,
 	float4* dL_dconic2D,
@@ -724,6 +730,7 @@ void BACKWARD::render(
 		dL_dpixels,
 		dL_dout_all_map,
 		dL_dout_plane_depth,
+		dL_dout_weight,
 		dL_dmean2D,
 		dL_dmean2D_abs,
 		dL_dconic2D,

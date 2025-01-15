@@ -222,6 +222,7 @@ int CudaRasterizer::Rasterizer::forward(
 	int* out_observe,
 	float* out_all_map,
 	float* out_plane_depth,
+	float* out_weight,
 	const bool render_geo,
 	bool debug)
 {
@@ -346,6 +347,7 @@ int CudaRasterizer::Rasterizer::forward(
 		out_observe,
 		out_all_map,
 		out_plane_depth,
+		out_weight,
 		render_geo), debug)
 
 	return num_rendered;
@@ -377,6 +379,7 @@ void CudaRasterizer::Rasterizer::backward(
 	const float* dL_dpix,
 	const float* dL_dout_all_map,
 	const float* dL_dout_plane_depth,
+	const float* dL_dout_weight,
 	float* dL_dmean2D,
 	float* dL_dmean2D_abs,
 	float* dL_dconic,
@@ -429,6 +432,7 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dpix,
 		dL_dout_all_map,
 		dL_dout_plane_depth,
+		dL_dout_weight,
 		(float3*)dL_dmean2D,
 		(float3*)dL_dmean2D_abs,
 		(float4*)dL_dconic,
