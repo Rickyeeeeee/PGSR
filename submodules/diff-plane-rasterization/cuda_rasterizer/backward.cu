@@ -410,7 +410,9 @@ renderCUDA(
 	const float* __restrict__ all_maps,
 	const float* __restrict__ all_map_pixels,
 	const float* __restrict__ final_Ts,
+	const float* __restrict__ final_geo_Ts,
 	const uint32_t* __restrict__ n_contrib,
+	const uint32_t* __restrict__ n_contrib_geo,
 	const float* __restrict__ dL_dpixels,
 	const float* __restrict__ dL_dout_all_maps,
 	const float* __restrict__ dL_dout_plane_depths,
@@ -438,6 +440,7 @@ renderCUDA(
 	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
 	bool done = !inside;
+	bool geo_done = !inside;
 	int toDo = range.y - range.x;
 
 	__shared__ int collected_id[BLOCK_SIZE];
@@ -450,11 +453,16 @@ renderCUDA(
 	// product of all (1 - alpha) factors. 
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
+	const float geo_T_final = inside ? final_geo_Ts[pix_id] : 0;
+	float geo_T = geo_T_final;
 
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
 	uint32_t contributor = toDo;
 	const int last_contributor = inside ? n_contrib[pix_id] : 0;
+
+	uint32_t geo_contributor = toDo;
+	const int last_geo_contributor = inside ? n_contrib_geo[pix_id] : 0;
 
 	float accum_rec[C] = { 0 };
 	float accum_all_map[MAP_N] = { 0 };
@@ -486,6 +494,7 @@ renderCUDA(
 	// }
 
 	float last_alpha = 0;
+	float last_geo_alpha = 0;
 	float last_color[C] = { 0 };
 	float last_all_map[MAP_N] = { 0 };
 
@@ -522,6 +531,7 @@ renderCUDA(
 			// Keep track of current Gaussian ID. Skip, if this one
 			// is behind the last contributor for this pixel.
 			contributor--;
+			geo_contributor--;
 			if (contributor >= last_contributor)
 				continue;
 
@@ -535,16 +545,23 @@ renderCUDA(
 
 			const float G = exp(power);
 			const float alpha = min(0.99f, con_o.w * G);
+			// const float geo_alpha = min(0.99f, G);
+			const float geo_alpha = 0.8f * G;
 			if (alpha < 1.0f / 255.0f)
 				continue;
 
 			T = T / (1.f - alpha);
 			const float dchannel_dcolor = alpha * T;
+			if (geo_contributor < last_geo_contributor) {
+				geo_T = geo_T / (1.f - geo_alpha);
+			}
+			const float dchannel_dgeo = geo_alpha * geo_T;
 
 			// Propagate gradients to per-Gaussian colors and keep
 			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
 			// pair).
 			float dL_dalpha = 0.0f;
+			float dL_dG = 0.0f;
 			const int global_id = collected_id[j];
 			for (int ch = 0; ch < C; ch++)
 			{
@@ -560,26 +577,30 @@ renderCUDA(
 				// many that were affected by this Gaussian.
 				atomicAdd(&(dL_dcolors[global_id * C + ch]), dchannel_dcolor * dL_dchannel);
 			}
-			if (render_geo) {
+			if (render_geo && geo_contributor < last_geo_contributor) {	
 				for (int ch = 0; ch < MAP_N; ch++)
 				{
 					const float c = collected_all_maps[ch * BLOCK_SIZE + j];
 					// Update last color (to be used in the next iteration)
-					accum_all_map[ch] = last_alpha * last_all_map[ch] + (1.f - last_alpha) * accum_all_map[ch];
+					accum_all_map[ch] = last_geo_alpha * last_all_map[ch] + (1.f - last_geo_alpha) * accum_all_map[ch];
 					last_all_map[ch] = c;
 
 					const float dL_dchannel = dL_dout_all_map[ch];
-					dL_dalpha += (c - accum_all_map[ch]) * dL_dchannel;
+					dL_dG += (c - accum_all_map[ch]) * dL_dchannel;
 					// Update the gradients w.r.t. color of the Gaussian. 
 					// Atomic, since this pixel is just one of potentially
 					// many that were affected by this Gaussian.
-					atomicAdd(&(dL_dall_map[global_id * MAP_N + ch]), dchannel_dcolor * dL_dchannel);
+					atomicAdd(&(dL_dall_map[global_id * MAP_N + ch]), dchannel_dgeo * dL_dchannel);
 				}
 			}
 			
 			dL_dalpha *= T;
 			// Update last alpha (to be used in the next iteration)
 			last_alpha = alpha;
+			if (geo_contributor < last_geo_contributor) {
+				dL_dG *= geo_T;
+				last_geo_alpha = geo_alpha;
+			}
 
 			// Account for fact that alpha also influences how much of
 			// the background color is added if nothing left to blend
@@ -590,7 +611,7 @@ renderCUDA(
 
 
 			// Helpful reusable temporary variables
-			const float dL_dG = con_o.w * dL_dalpha;
+			dL_dG += con_o.w * dL_dalpha;
 			const float gdx = G * d.x;
 			const float gdy = G * d.y;
 			const float dG_ddelx = -gdx * con_o.x - gdy * con_o.y;
@@ -691,7 +712,9 @@ void BACKWARD::render(
 	const float* all_maps,
 	const float* all_map_pixels,
 	const float* final_Ts,
+	const float* final_geo_Ts,
 	const uint32_t* n_contrib,
+	const uint32_t* n_contrib_geo,
 	const float* dL_dpixels,
 	const float* dL_dout_all_map,
 	const float* dL_dout_plane_depth,
@@ -715,7 +738,9 @@ void BACKWARD::render(
 		all_maps,
 		all_map_pixels,
 		final_Ts,
+		final_geo_Ts,
 		n_contrib,
+		n_contrib_geo,
 		dL_dpixels,
 		dL_dout_all_map,
 		dL_dout_plane_depth,

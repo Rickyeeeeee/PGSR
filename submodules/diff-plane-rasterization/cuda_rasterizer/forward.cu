@@ -285,7 +285,9 @@ renderCUDA(
 	const float* __restrict__ all_map,
 	const float4* __restrict__ conic_opacity,
 	float* __restrict__ final_T,
+	float* __restrict__ final_geo_T,
 	uint32_t* __restrict__ n_contrib,
+	uint32_t* __restrict__ n_contrib_geo,
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
 	int* __restrict__ out_observe,
@@ -306,6 +308,7 @@ renderCUDA(
 	bool inside = pix.x < W&& pix.y < H;
 	// Done threads can help with fetching, but don't rasterize
 	bool done = !inside;
+	bool geo_done = !inside;
 
 	// Load start/end range of IDs to process in bit sorted list.
 	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
@@ -321,6 +324,9 @@ renderCUDA(
 	float T = 1.0f;
 	uint32_t contributor = 0;
 	uint32_t last_contributor = 0;
+	float geo_T = 1.0f;
+	uint32_t geo_contributor = 0;
+	uint32_t geo_last_contributor = 0;
 	float C[CHANNELS] = { 0 };
 	float All_map[ALL_MAP] = { 0 };
 	// Iterate over batches until all done or range is complete
@@ -347,6 +353,8 @@ renderCUDA(
 		{
 			// Keep track of current position in range
 			contributor++;
+			// if (!geo_done)
+			geo_contributor++;
 			// Resample using conic matrix (cf. "Surface 
 			// Splatting" by Zwicker et al., 2001)
 			float2 xy = collected_xy[j];
@@ -360,9 +368,17 @@ renderCUDA(
 			// Obtain alpha by multiplying with Gaussian opacity
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
-			float alpha = min(0.99f, con_o.w * exp(power));
+			float G = exp(power);
+			float alpha = min(0.99f, con_o.w * G);
+			// float geo_alpha = min(0.99f, G); 
+			float geo_alpha = 0.8f * G;
 			if (alpha < 1.0f / 255.0f)
 				continue;
+			float test_geo_T = geo_T * (1 - geo_alpha);
+			if ((!geo_done) && (test_geo_T < 0.0001f))
+			{
+				geo_done = true;
+			}
 			float test_T = T * (1 - alpha);
 			if (test_T < 0.0001f)
 			{
@@ -373,9 +389,9 @@ renderCUDA(
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
-			if (render_geo) {
+			if (render_geo && !geo_done) {
 				for (int ch = 0; ch < ALL_MAP; ch++)
-					All_map[ch] += all_map[collected_id[j] * ALL_MAP + ch] * alpha * T;
+					All_map[ch] += all_map[collected_id[j] * ALL_MAP + ch] * geo_alpha * geo_T;
 			}
 			
 			if (T > 0.5)
@@ -383,10 +399,14 @@ renderCUDA(
 				atomicAdd(&(out_observe[collected_id[j]]), 1);
 			}
 			T = test_T;
+			if (!geo_done)
+				geo_T = test_geo_T;
 
 			// Keep track of last range entry to update this
 			// pixel.
 			last_contributor = contributor;
+			if (!geo_done)
+				geo_last_contributor = geo_contributor;
 		}
 	}
 
@@ -395,7 +415,9 @@ renderCUDA(
 	if (inside)
 	{
 		final_T[pix_id] = T;
+		final_geo_T[pix_id] = geo_T;
 		n_contrib[pix_id] = last_contributor;
+		n_contrib_geo[pix_id] = geo_last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 		if (render_geo) {
@@ -420,7 +442,9 @@ void FORWARD::render(
 	const float* all_map,
 	const float4* conic_opacity,
 	float* final_T,
+	float* final_geo_T,
 	uint32_t* n_contrib,
+	uint32_t* n_contrib_geo,
 	const float* bg_color,
 	float* out_color,
 	int* out_observe,
@@ -441,7 +465,9 @@ void FORWARD::render(
 		all_map,
 		conic_opacity,
 		final_T,
+		final_geo_T,
 		n_contrib,
+		n_contrib_geo,
 		bg_color,
 		out_color,
 		out_observe,

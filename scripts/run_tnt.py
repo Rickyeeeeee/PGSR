@@ -1,17 +1,19 @@
 import os
 
-scenes = ['Courthouse', 'Truck', 'Caterpillar', 'Barn', 'Meetingroom', 'Ignatius']
-data_devices = ['cpu', 'cuda', 'cuda','cuda','cuda', 'cuda']
+# scenes = ['Courthouse', 'Truck', 'Caterpillar', 'Barn', 'Meetingroom', 'Ignatius']
+scenes = ['Caterpillar', 'Barn', 'Meetingroom', 'Ignatius']
+# data_devices = ['cpu', 'cuda', 'cuda','cuda','cuda', 'cuda']
+data_devices = ['cuda','cuda','cuda', 'cuda']
 data_base_path='/workspace/data/replica_sclike_colmap_dnsplatter/tnt_dataset/tnt'
 out_base_path='/workspace/work/Outputs/tnt'
-out_name='pgsr'
+out_name='pgsr_fix_geo'
 gpu_id=3
 
 for id, scene in enumerate(scenes):
 
-    cmd = f'rm -rf {out_base_path}/{out_name}/{scene}/*'
-    print(cmd)
-    os.system(cmd)
+#     cmd = f'rm -rf {out_base_path}/{out_name}/{scene}/*'
+#     print(cmd)
+#     os.system(cmd)
     
     # create folder name 0
     # cmd = f'mkdir -p {data_base_path}/{scene}/sparse/0'
@@ -27,10 +29,10 @@ for id, scene in enumerate(scenes):
     # print(cmd)
     # os.system(cmd)
     
-    common_args = f" --quiet -r2 --ncc_scale 0.5 --data_device {data_devices[id]} --densify_abs_grad_threshold 0.00015 --opacity_cull_threshold 0.05 --exposure_compensation --checkpoint_iterations 7_099 14_099 20_099 27_099"
-    cmd = f'CUDA_VISIBLE_DEVICES={gpu_id} python train.py -s {data_base_path}/{scene} -m {out_base_path}/{out_name}/{scene} {common_args}'
-    print(cmd)
-    os.system(cmd)
+#     common_args = f" --quiet -r2 --ncc_scale 0.5 --data_device {data_devices[id]} --densify_abs_grad_threshold 0.00015 --opacity_cull_threshold 0.05"
+#     cmd = f'CUDA_VISIBLE_DEVICES={gpu_id} python train.py -s {data_base_path}/{scene} -m {out_base_path}/{out_name}/{scene} {common_args}'
+#     print(cmd)
+#     os.system(cmd)
 
     cmd = 'conda install open3d==0.18 -y'
     print(cmd)
