@@ -4,7 +4,7 @@ scenes = ['8b5caf3398', '09c1414f1b', '280b83fcf3', 'b20a261fdf']
 data_base_path='/workspace/data/scannetpp_2024_default/data'
 out_base_path='/workspace/work/Outputs/scannet++_dslr'
 out_name='pgsr_fix_geo'
-gpu_id=1
+gpu_id=3
 
 for scene in scenes:
     cmd = f'rm -rf {out_base_path}/{out_name}/{scene}/*'

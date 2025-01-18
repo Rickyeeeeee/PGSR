@@ -371,7 +371,7 @@ renderCUDA(
 			float G = exp(power);
 			float alpha = min(0.99f, con_o.w * G);
 			// float geo_alpha = min(0.99f, G); 
-			float geo_alpha = 0.8f * G;
+			float geo_alpha = 0.9f * G;
 			if (alpha < 1.0f / 255.0f)
 				continue;
 			float test_geo_T = geo_T * (1 - geo_alpha);
